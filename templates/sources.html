@@ -224,7 +224,21 @@ function renderCard(s) {
 }
 
 async function load() {
-  const data = await fetch('/api/sources').then(r => r.json());
+  document.getElementById('cache-info').textContent = 'Chargement...';
+
+  let data;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const resp = await fetch('/api/sources', { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+  } catch (e) {
+    document.getElementById('cache-info').textContent =
+      `Erreur de chargement des sources (${e.message || e}). Réessaie ou vérifie les logs du serveur.`;
+    return;
+  }
 
   document.getElementById('total-events').textContent = data.total_events;
   document.getElementById('active-count').textContent = data.sources.filter(s => s.status === 'active').length;
