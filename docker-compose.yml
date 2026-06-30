@@ -1,6 +1,6 @@
 services:
   scrap-conventions:
-    build: .
+    image: ghcr.io/alizee-m/scrap-conventions:latest
     container_name: scrap-conventions
     restart: unless-stopped
     ports:
