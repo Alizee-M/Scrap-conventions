@@ -174,13 +174,11 @@ def scrape_romgame() -> list[dict]:
         name = a.get_text(strip=True)
         event_url = "https://www.rom-game.fr" + a["href"] if a["href"].startswith("/") else a["href"]
 
-        # Location: nearest .event-category sibling
+        # Location: "Category · City" line — old markup used .event-category,
+        # current markup uses .event-meta-mobile / .event-meta-desktop.
         location = ""
-        cat = h3.find_next_sibling(class_="event-category")
-        if not cat:
-            # Try parent container
-            parent = h3.parent
-            cat = parent.select_one(".event-category") if parent else None
+        parent = h3.parent
+        cat = parent.select_one(".event-category, .event-meta-mobile, .event-meta-desktop") if parent else None
         if cat:
             text = cat.get_text(separator=" ", strip=True)
             # Format: "Category · City" — keep city part
@@ -313,20 +311,13 @@ def scrape_all() -> list[dict]:
 # ─── Cache ────────────────────────────────────────────────────────────────────
 
 def load_cache() -> list[dict] | None:
+    """Load whatever is cached on disk, regardless of age — staleness is handled by
+    the daily background refresh, never by blocking a request with a synchronous re-scrape."""
     if not os.path.exists(CACHE_FILE):
-        return None
-    if time.time() - os.stat(CACHE_FILE).st_mtime > CACHE_TTL:
         return None
     with open(CACHE_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-    if not data:
-        return None
-    # Invalidate if geocoding never happened or failed for most events
-    geocoded = sum(1 for c in data if c.get("lat") is not None)
-    if geocoded < len(data) * 0.3:
-        logger.info(f"Too few coordinates ({geocoded}/{len(data)}), invalidating cache")
-        return None
-    return data
+    return data or None
 
 
 def save_cache(data: list[dict]):

@@ -169,13 +169,20 @@ def api_refresh():
             return jsonify({"error": str(e)}), 500
 
 
-if __name__ == "__main__":
+def _initial_load():
     logger.info("Initial load on startup...")
-    try:
-        convs = get_conventions()
-        logger.info(f"Ready with {len(convs)} conventions")
-    except Exception as e:
-        logger.error(f"Startup load failed: {e}")
+    with _refresh_lock:
+        try:
+            convs = get_conventions()
+            logger.info(f"Ready with {len(convs)} conventions")
+        except Exception as e:
+            logger.error(f"Startup load failed: {e}")
+
+
+if __name__ == "__main__":
+    # Run in the background so Flask starts accepting requests immediately,
+    # even on a cold cache where the first scrape can take a while.
+    threading.Thread(target=_initial_load, daemon=True).start()
 
     t = threading.Thread(target=_background_refresh, daemon=True)
     t.start()
