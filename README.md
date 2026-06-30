@@ -21,40 +21,37 @@ Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 
 ---
 
+## Variables d'environnement
+
+Cette app ne nécessite **aucune variable d'environnement** — pas d'API key, pas de token.  
+Elle utilise uniquement Nominatim (OpenStreetMap, gratuit et sans clé) pour le géocodage.
+
+> Si tu ajoutes une intégration future nécessitant une clé, ne jamais la mettre dans le code :  
+> configure-la comme variable d'environnement dans Portainer (voir section déploiement).
+
+---
+
 ## Déploiement sur HAOS avec Portainer
 
-### 1. Copier les fichiers sur HAOS
+### Prérequis
 
-Via le add-on **SSH & Web Terminal** de Home Assistant :
+- Portainer installé sur HAOS
+- Registre GHCR configuré dans Portainer pour puller l'image :
+  - **Portainer → Settings → Registries → Add registry → Custom registry**
+  - URL : `ghcr.io`
+  - Username : `Alizee-M`
+  - Password : ton token GitHub avec le scope `read:packages`
 
-```bash
-mkdir -p /share/scrap-conventions
-```
+### Créer le stack
 
-Puis copier le contenu du repo dans `/share/scrap-conventions/` (via SAMBA, SCP, ou le File Editor).
+1. Portainer → **Stacks** → **Add stack**
+2. Nom : `scrap-conventions`
+3. Build method : **Repository** → URL : `https://github.com/Alizee-M/Scrap-conventions`
+4. Reference : `refs/heads/main` — Compose path : `docker-compose.yml`
+5. *(Pas de variables d'environnement à configurer pour ce projet)*
+6. **Deploy the stack**
 
-### 2. Créer le stack dans Portainer
-
-1. Ouvre Portainer → **Stacks** → **Add stack**
-2. Donne-lui le nom `scrap-conventions`
-3. Méthode : **Upload** → sélectionne `docker-compose.yml`
-4. **Ou** colle directement ce contenu dans l'éditeur :
-
-```yaml
-services:
-  scrap-conventions:
-    build: /share/scrap-conventions
-    container_name: scrap-conventions
-    restart: unless-stopped
-    ports:
-      - "5050:5000"
-    volumes:
-      - /share/scrap-conventions/cache:/app/cache
-```
-
-5. Clique **Deploy the stack**
-
-### 3. Accéder à l'app
+### Accéder à l'app
 
 ```
 http://<IP-de-ton-HAOS>:5050
@@ -76,12 +73,14 @@ L'app tourne sur `http://localhost:5000`.
 ## Structure
 
 ```
-├── app.py           # Flask + API REST
-├── scraper.py       # Scraping lagendageek.com
-├── geocoder.py      # Géocodage Nominatim + calcul haversine
+├── app.py                          # Flask + API REST
+├── scraper.py                      # Scraping 3 sources
+├── geocoder.py                     # Géocodage Nominatim + haversine
 ├── templates/
-│   └── index.html   # Interface
-├── cache/           # Cache scraping + géocodage (auto-généré)
+│   └── index.html                  # Interface dark mode
+├── .github/workflows/
+│   └── docker-publish.yml          # Build + push image sur GHCR
+├── cache/                          # Cache auto-généré (volume Docker)
 ├── Dockerfile
 └── docker-compose.yml
 ```
