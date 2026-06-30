@@ -1,0 +1,113 @@
+import logging
+import threading
+import time
+from flask import Flask, jsonify, render_template, request
+from geocoder import geocode, haversine
+from scraper import get_conventions
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+_refresh_lock = threading.Lock()
+
+
+def _enrich_with_coords(conventions: list[dict]) -> list[dict]:
+    """Add lat/lon to each convention (cached via geocoder)."""
+    for conv in conventions:
+        if "lat" not in conv and conv.get("location"):
+            coords = geocode(conv["location"])
+            if coords:
+                conv["lat"], conv["lon"] = coords
+            else:
+                conv["lat"] = conv["lon"] = None
+    return conventions
+
+
+def _background_refresh():
+    while True:
+        time.sleep(86400)
+        logger.info("Background refresh triggered")
+        with _refresh_lock:
+            try:
+                convs = get_conventions(force_refresh=True)
+                _enrich_with_coords(convs)
+            except Exception as e:
+                logger.error(f"Background refresh failed: {e}")
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/conventions")
+def api_conventions():
+    sort = request.args.get("sort", "date")
+    user_lat = request.args.get("lat", type=float)
+    user_lon = request.args.get("lon", type=float)
+    location_name = request.args.get("location", "")
+
+    # Geocode user location if provided as text
+    if location_name and (user_lat is None or user_lon is None):
+        coords = geocode(location_name)
+        if coords:
+            user_lat, user_lon = coords
+
+    with _refresh_lock:
+        convs = get_conventions()
+        _enrich_with_coords(convs)
+
+    result = []
+    for c in convs:
+        entry = dict(c)
+        if user_lat is not None and user_lon is not None and c.get("lat") and c.get("lon"):
+            entry["distance_km"] = round(haversine(user_lat, user_lon, c["lat"], c["lon"]), 1)
+        else:
+            entry["distance_km"] = None
+        result.append(entry)
+
+    if sort == "distance" and user_lat is not None:
+        result.sort(key=lambda x: x["distance_km"] if x["distance_km"] is not None else 99999)
+    else:
+        result.sort(key=lambda x: x["date"] or "9999")
+
+    return jsonify({"conventions": result, "user_lat": user_lat, "user_lon": user_lon})
+
+
+@app.route("/api/geocode")
+def api_geocode():
+    q = request.args.get("q", "")
+    if not q:
+        return jsonify({"error": "missing q"}), 400
+    coords = geocode(q)
+    if coords:
+        return jsonify({"lat": coords[0], "lon": coords[1]})
+    return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/refresh", methods=["POST"])
+def api_refresh():
+    with _refresh_lock:
+        try:
+            convs = get_conventions(force_refresh=True)
+            _enrich_with_coords(convs)
+            return jsonify({"count": len(convs)})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    # Initial scrape on startup
+    logger.info("Initial scrape on startup...")
+    try:
+        convs = get_conventions()
+        _enrich_with_coords(convs)
+        logger.info(f"Ready with {len(convs)} conventions")
+    except Exception as e:
+        logger.error(f"Startup scrape failed: {e}")
+
+    t = threading.Thread(target=_background_refresh, daemon=True)
+    t.start()
+
+    app.run(host="0.0.0.0", port=5000, debug=False)

@@ -1,0 +1,9 @@
+services:
+  scrap-conventions:
+    build: .
+    container_name: scrap-conventions
+    restart: unless-stopped
+    ports:
+      - "5050:5000"
+    volumes:
+      - ./cache:/app/cache
