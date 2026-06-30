@@ -51,18 +51,28 @@ def _nominatim_query(q: str) -> tuple[float, float] | None:
 
 
 def normalize_location(raw: str) -> str:
-    """Convert 'Tours (37)' → 'Tours, France' or 'Herstal, Belgique' → 'Herstal, Belgium'"""
+    """Extract city from location strings like 'Tours (37) - Parc des Expositions...'"""
     raw = raw.strip()
 
-    # Pattern "City (dept_number)" → French city
+    # Strip venue/address after " - " separator: "City (37) - Venue name" → "City (37)"
+    if " - " in raw:
+        raw = raw.split(" - ")[0].strip()
+
+    # "City (dept_number)" → French city
     m = re.match(r"^(.+?)\s*\(\d+\)\s*$", raw)
     if m:
         return f"{m.group(1).strip()}, France"
 
-    # Already has a country
+    # "City (BE/CH/ES/LU/DE)" → neighboring country
+    country_codes = {"BE": "Belgium", "CH": "Switzerland", "ES": "Spain", "LU": "Luxembourg", "DE": "Germany", "NL": "Netherlands"}
+    m = re.match(r"^(.+?)\s*\(([A-Z]{2})\)\s*$", raw)
+    if m and m.group(2) in country_codes:
+        return f"{m.group(1).strip()}, {country_codes[m.group(2)]}"
+
+    # French/Dutch country names in text
     country_map = {
-        "belgique": "Belgium",
-        "suisse": "Switzerland",
+        "belgique": "Belgium", "belgië": "Belgium",
+        "suisse": "Switzerland", "schweiz": "Switzerland",
         "espagne": "Spain",
         "luxembourg": "Luxembourg",
         "allemagne": "Germany",
@@ -70,13 +80,12 @@ def normalize_location(raw: str) -> str:
     lower = raw.lower()
     for fr, en in country_map.items():
         if fr in lower:
-            city = re.sub(r",?\s*" + fr, "", lower, flags=re.IGNORECASE).strip().title()
+            city = re.sub(r",?\s*" + fr, "", raw, flags=re.IGNORECASE).strip()
             return f"{city}, {en}"
 
-    if "belgium" in lower or "spain" in lower or "switzerland" in lower:
+    if re.search(r"\b(belgium|spain|switzerland|netherlands)\b", lower):
         return raw
 
-    # Default: assume France
     return f"{raw}, France"
 
 

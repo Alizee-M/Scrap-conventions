@@ -319,9 +319,12 @@ def load_cache() -> list[dict] | None:
         return None
     with open(CACHE_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
-    # Invalidate cache if it predates geocoding (no lat/lon fields)
-    if data and "lat" not in data[0]:
-        logger.info("Cache has no coordinates, invalidating to trigger re-geocoding")
+    if not data:
+        return None
+    # Invalidate if geocoding never happened or failed for most events
+    geocoded = sum(1 for c in data if c.get("lat") is not None)
+    if geocoded < len(data) * 0.3:
+        logger.info(f"Too few coordinates ({geocoded}/{len(data)}), invalidating cache")
         return None
     return data
 
