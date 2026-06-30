@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Scrap-Conventions</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -18,56 +18,67 @@
     --card-bg: #16161f;
     --green: #00e676;
     --orange: #ff9100;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
 
   body {
     background: var(--bg);
     color: var(--text);
     font-family: 'Segoe UI', system-ui, sans-serif;
-    min-height: 100vh;
     display: flex;
     flex-direction: column;
   }
 
+  /* ── Header ── */
   header {
-    background: linear-gradient(135deg, #1a0a2e 0%, #16082e 50%, #0d0d1a 100%);
+    background: linear-gradient(135deg, #1a0a2e, #0d0d1a);
     border-bottom: 1px solid var(--border);
-    padding: 1.2rem 2rem;
+    padding: 0.75rem 1rem;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
     flex-shrink: 0;
   }
 
   header h1 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
     background: linear-gradient(90deg, var(--accent), var(--accent2));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    white-space: nowrap;
   }
 
-  header p { color: var(--muted); font-size: 0.82rem; margin-top: 0.15rem; }
+  header p {
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-top: 0.1rem;
+    display: none;
+  }
 
+  /* ── Controls ── */
   .controls {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0.9rem 2rem;
+    padding: 0.6rem 0.75rem;
     display: flex;
-    gap: 0.8rem;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.5rem;
     flex-shrink: 0;
   }
 
-  .search-wrap {
+  .controls-row {
     display: flex;
-    flex: 1;
-    min-width: 220px;
     gap: 0.5rem;
+    align-items: center;
   }
 
   input[type="text"] {
@@ -76,10 +87,12 @@
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: 8px;
-    padding: 0.55rem 1rem;
+    padding: 0.6rem 0.85rem;
     font-size: 0.9rem;
     outline: none;
+    min-height: 44px;
     transition: border-color 0.2s;
+    -webkit-appearance: none;
   }
 
   input[type="text"]:focus { border-color: var(--accent); }
@@ -89,22 +102,30 @@
     color: #fff;
     border: none;
     border-radius: 8px;
-    padding: 0.55rem 1.1rem;
+    padding: 0 1rem;
     font-size: 0.88rem;
     cursor: pointer;
-    transition: opacity 0.2s;
+    min-height: 44px;
     white-space: nowrap;
+    transition: opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
   }
 
   button:hover { opacity: 0.85; }
+  button:active { opacity: 0.7; }
   button:disabled { opacity: 0.4; cursor: default; }
 
-  .btn-group { display: flex; gap: 0.4rem; }
+  .btn-group {
+    display: flex;
+    gap: 0.35rem;
+    flex: 1;
+  }
 
   .btn-group button {
+    flex: 1;
     background: var(--border);
-    font-size: 0.82rem;
-    padding: 0.48rem 0.85rem;
+    font-size: 0.8rem;
+    padding: 0 0.5rem;
   }
 
   .btn-group button.active { background: var(--accent); }
@@ -114,90 +135,116 @@
     border: 1px solid var(--border);
     color: var(--muted);
     font-size: 0.78rem;
-    padding: 0.48rem 0.75rem;
-  }
-
-  .btn-refresh:hover { color: var(--text); border-color: var(--accent); }
-
-  .stats {
-    padding: 0.6rem 2rem;
-    color: var(--muted);
-    font-size: 0.8rem;
-    border-bottom: 1px solid var(--border);
+    padding: 0 0.75rem;
     flex-shrink: 0;
   }
 
+  /* ── Stats ── */
+  .stats {
+    padding: 0.4rem 0.75rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* ── Views ── */
-  .view { display: none; flex: 1; overflow: hidden; }
+  .view { display: none; flex: 1; overflow: hidden; min-height: 0; }
   .view.active { display: flex; flex-direction: column; }
 
-  /* ── Card view ── */
-  #view-list { overflow-y: auto; }
+  /* ── List view ── */
+  #view-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-    gap: 1rem;
-    padding: 1.2rem 2rem;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
     align-content: start;
   }
 
   .card {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 10px;
     overflow: hidden;
-    transition: transform 0.15s, border-color 0.15s;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.15s;
+    min-height: 90px;
   }
 
-  .card:hover { transform: translateY(-2px); border-color: var(--accent2); }
+  .card:active { border-color: var(--accent2); }
 
   .card-img {
-    width: 100%;
-    height: 130px;
+    width: 90px;
+    min-width: 90px;
     object-fit: cover;
     background: var(--surface);
   }
 
   .card-img-placeholder {
-    width: 100%;
-    height: 130px;
+    width: 90px;
+    min-width: 90px;
     background: linear-gradient(135deg, #1a0a2e, #0d0d1a);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2.2rem;
+    font-size: 1.8rem;
   }
 
-  .card-body { padding: 0.85rem; flex: 1; display: flex; flex-direction: column; gap: 0.45rem; }
+  .card-body {
+    padding: 0.65rem 0.75rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+  }
 
-  .card-name { font-size: 0.95rem; font-weight: 600; line-height: 1.3; }
+  .card-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
   .card-name a { color: var(--text); text-decoration: none; }
-  .card-name a:hover { color: var(--accent); }
 
-  .card-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: auto; }
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: auto;
+  }
 
   .badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.2rem 0.55rem;
+    gap: 0.2rem;
+    padding: 0.18rem 0.5rem;
     border-radius: 20px;
-    font-size: 0.74rem;
+    font-size: 0.7rem;
     font-weight: 500;
+    white-space: nowrap;
   }
 
-  .badge-date { background: rgba(124, 77, 255, 0.2); color: var(--accent2); border: 1px solid rgba(124,77,255,0.3); }
-  .badge-loc  { background: rgba(0, 230, 118, 0.1); color: var(--green); border: 1px solid rgba(0,230,118,0.2); }
-  .badge-dist { background: rgba(255, 145, 0, 0.15); color: var(--orange); border: 1px solid rgba(255,145,0,0.3); }
+  .badge-date { background: rgba(124,77,255,0.2); color: var(--accent2); border: 1px solid rgba(124,77,255,0.3); }
+  .badge-loc  { background: rgba(0,230,118,0.1);  color: var(--green);   border: 1px solid rgba(0,230,118,0.2); max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  .badge-dist { background: rgba(255,145,0,0.15); color: var(--orange);  border: 1px solid rgba(255,145,0,0.3); }
 
   .empty, .loader {
     grid-column: 1/-1;
     text-align: center;
-    padding: 4rem;
+    padding: 3rem 1rem;
     color: var(--muted);
   }
 
@@ -215,22 +262,16 @@
 
   @keyframes bounce {
     0%, 80%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-12px); }
+    40%           { transform: translateY(-10px); }
   }
 
   /* ── Map view ── */
   #view-map { position: relative; }
 
-  #map {
-    flex: 1;
-    width: 100%;
-    min-height: 0;
-  }
+  #map { flex: 1; width: 100%; min-height: 0; }
 
-  /* Dark tile filter */
   .leaflet-tile { filter: brightness(0.85) saturate(0.8); }
 
-  /* Popup styling */
   .leaflet-popup-content-wrapper {
     background: var(--surface);
     color: var(--text);
@@ -241,16 +282,58 @@
 
   .leaflet-popup-tip { background: var(--surface); }
 
-  .popup-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; line-height: 1.3; }
+  .popup-name { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.35rem; line-height: 1.3; }
   .popup-name a { color: var(--accent); text-decoration: none; }
-  .popup-name a:hover { text-decoration: underline; }
-  .popup-meta { font-size: 0.8rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.2rem; }
-  .popup-dist { color: var(--orange); font-weight: 600; margin-top: 0.3rem; }
+  .popup-meta { font-size: 0.78rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.2rem; }
+  .popup-dist { color: var(--orange); font-weight: 600; margin-top: 0.25rem; }
 
-  @media (max-width: 600px) {
-    .controls { padding: 0.8rem 1rem; }
-    .grid { padding: 0.8rem 1rem; }
-    header { padding: 1rem; }
+  /* ── Desktop overrides ── */
+  @media (min-width: 640px) {
+    header { padding: 1rem 2rem; }
+    header h1 { font-size: 1.5rem; }
+    header p { display: block; }
+
+    .controls {
+      flex-direction: row;
+      padding: 0.75rem 1.5rem;
+      align-items: center;
+    }
+
+    .controls-row { flex: none; }
+    .controls-row:first-child { flex: 1; }
+
+    .btn-group { flex: none; }
+    .btn-group button { flex: none; padding: 0 0.85rem; }
+
+    .stats { padding: 0.5rem 1.5rem; font-size: 0.8rem; }
+
+    .grid {
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      padding: 1.2rem 1.5rem;
+    }
+
+    .card {
+      flex-direction: column;
+      min-height: unset;
+    }
+
+    .card-img {
+      width: 100%;
+      min-width: unset;
+      height: 130px;
+    }
+
+    .card-img-placeholder {
+      width: 100%;
+      min-width: unset;
+      height: 130px;
+      font-size: 2.2rem;
+    }
+
+    .card:hover { border-color: var(--accent2); transform: translateY(-2px); }
+
+    .badge-loc { max-width: none; }
   }
 </style>
 </head>
@@ -264,19 +347,23 @@
 </header>
 
 <div class="controls">
-  <div class="search-wrap">
-    <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève, Lyon...)" />
+  <!-- Row 1 : search -->
+  <div class="controls-row" style="flex:1; width:100%;">
+    <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" />
     <button id="btn-search">Chercher</button>
   </div>
-  <div class="btn-group">
-    <button id="btn-date" class="active" onclick="setSort('date')">Par date</button>
-    <button id="btn-dist" onclick="setSort('distance')">Par distance</button>
+  <!-- Row 2 : sort + view + refresh -->
+  <div class="controls-row" style="width:100%; justify-content:space-between;">
+    <div class="btn-group">
+      <button id="btn-date" class="active" onclick="setSort('date')">Par date</button>
+      <button id="btn-dist" onclick="setSort('distance')">Par distance</button>
+    </div>
+    <div class="btn-group" style="margin-left:0.5rem;">
+      <button id="btn-view-list" class="active" onclick="setView('list')">Liste</button>
+      <button id="btn-view-map" onclick="setView('map')">Carte</button>
+    </div>
+    <button class="btn-refresh" id="btn-refresh" onclick="refresh()" style="margin-left:0.5rem;">↺</button>
   </div>
-  <div class="btn-group">
-    <button id="btn-view-list" class="active" onclick="setView('list')">Liste</button>
-    <button id="btn-view-map" onclick="setView('map')">Carte</button>
-  </div>
-  <button class="btn-refresh" id="btn-refresh" onclick="refresh()">Actualiser</button>
 </div>
 
 <div class="stats" id="stats"></div>
@@ -303,40 +390,24 @@ let userLat = null;
 let userLon = null;
 let conventions = [];
 
-// ── Leaflet map ──────────────────────────────────────────────────────────────
+// ── Leaflet ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true }).setView([46.6, 2.3], 6);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a>',
   maxZoom: 18,
 }).addTo(map);
 
 const convIcon = L.divIcon({
   className: '',
-  html: `<div style="
-    background: #7c4dff;
-    border: 2px solid #e040fb;
-    border-radius: 50%;
-    width: 14px; height: 14px;
-    box-shadow: 0 0 6px #e040fb88;
-  "></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-  popupAnchor: [0, -10],
+  html: `<div style="background:#7c4dff;border:2px solid #e040fb;border-radius:50%;width:14px;height:14px;box-shadow:0 0 6px #e040fb88;"></div>`,
+  iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10],
 });
 
 const userIcon = L.divIcon({
   className: '',
-  html: `<div style="
-    background: #ff9100;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    width: 16px; height: 16px;
-    box-shadow: 0 0 8px #ff9100;
-  "></div>`,
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
-  popupAnchor: [0, -10],
+  html: `<div style="background:#ff9100;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 8px #ff9100;"></div>`,
+  iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -10],
 });
 
 let markers = [];
@@ -349,12 +420,11 @@ function clearMarkers() {
 
 function renderMap(data) {
   clearMarkers();
-
   if (userMarker) map.removeLayer(userMarker);
+
   if (userLat !== null) {
     userMarker = L.marker([userLat, userLon], { icon: userIcon })
-      .addTo(map)
-      .bindPopup('<b style="color:#ff9100">Ta position</b>');
+      .addTo(map).bindPopup('<b style="color:#ff9100">Ta position</b>');
     map.setView([userLat, userLon], 9);
   }
 
@@ -368,10 +438,7 @@ function renderMap(data) {
         ${c.location ? `<span>📍 ${c.location}</span>` : ''}
         ${dist}
       </div>`;
-    const m = L.marker([c.lat, c.lon], { icon: convIcon })
-      .addTo(map)
-      .bindPopup(popup, { maxWidth: 260 });
-    markers.push(m);
+    markers.push(L.marker([c.lat, c.lon], { icon: convIcon }).addTo(map).bindPopup(popup, { maxWidth: 240 }));
   });
 }
 
@@ -399,13 +466,10 @@ function setView(v) {
   document.getElementById('btn-view-map').classList.toggle('active', v === 'map');
   document.getElementById('view-list').classList.toggle('active', v === 'list');
   document.getElementById('view-map').classList.toggle('active', v === 'map');
-  if (v === 'map') {
-    map.invalidateSize();
-    renderMap(sorted(conventions));
-  }
+  if (v === 'map') { map.invalidateSize(); renderMap(sortedData(conventions)); }
 }
 
-function sorted(data) {
+function sortedData(data) {
   const copy = [...data];
   if (currentSort === 'distance' && userLat !== null) {
     copy.sort((a, b) => (a.distance_km ?? 99999) - (b.distance_km ?? 99999));
@@ -417,10 +481,7 @@ function sorted(data) {
 
 function renderList(data) {
   const grid = document.getElementById('grid');
-  if (!data.length) {
-    grid.innerHTML = '<div class="empty">Aucune convention trouvée.</div>';
-    return;
-  }
+  if (!data.length) { grid.innerHTML = '<div class="empty">Aucune convention trouvée.</div>'; return; }
   grid.innerHTML = data.map(c => {
     const dist = fmtDist(c.distance_km);
     const imgHtml = c.image
@@ -430,9 +491,7 @@ function renderList(data) {
     <div class="card" onclick="${c.url ? `window.open('${c.url}','_blank')` : ''}">
       ${imgHtml}
       <div class="card-body">
-        <div class="card-name">
-          ${c.url ? `<a href="${c.url}" target="_blank" rel="noopener">${c.name}</a>` : c.name}
-        </div>
+        <div class="card-name">${c.name}</div>
         <div class="card-meta">
           ${c.date ? `<span class="badge badge-date">📅 ${fmtDate(c.date)}</span>` : ''}
           ${c.location ? `<span class="badge badge-loc">📍 ${c.location}</span>` : ''}
@@ -444,56 +503,46 @@ function renderList(data) {
 }
 
 function renderAll(data) {
-  const s = sorted(data);
-  const stats = document.getElementById('stats');
-  stats.textContent = `${s.length} convention${s.length > 1 ? 's' : ''} à venir${userLat !== null ? ' · ' + (currentSort === 'distance' ? 'par distance' : 'par date') : ''}`;
+  const s = sortedData(data);
+  document.getElementById('stats').textContent =
+    `${s.length} convention${s.length > 1 ? 's' : ''} à venir` +
+    (userLat !== null ? ` · ${currentSort === 'distance' ? 'par distance' : 'par date'}` : '');
   renderList(s);
   if (currentView === 'map') renderMap(s);
 }
 
-// ── Data loading ─────────────────────────────────────────────────────────────
+// ── Data ─────────────────────────────────────────────────────────────────────
 async function load() {
   const loc = document.getElementById('location').value.trim();
-  const grid = document.getElementById('grid');
-  grid.innerHTML = '<div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div><p style="margin-top:1rem">Chargement...</p></div>';
+  document.getElementById('grid').innerHTML =
+    '<div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div><p style="margin-top:1rem">Chargement...</p></div>';
 
   let url = `/api/conventions?sort=${currentSort}`;
   if (loc) url += `&location=${encodeURIComponent(loc)}`;
 
   try {
-    const resp = await fetch(url);
-    const data = await resp.json();
+    const data = await fetch(url).then(r => r.json());
     conventions = data.conventions;
     userLat = data.user_lat;
     userLon = data.user_lon;
-
-    if (loc && userLat === null) {
+    if (loc && userLat === null)
       document.getElementById('stats').textContent = `Ville "${loc}" non trouvée.`;
-    }
-
     renderAll(conventions);
-  } catch (e) {
-    grid.innerHTML = '<div class="empty">Erreur de chargement. Réessaie.</div>';
+  } catch {
+    document.getElementById('grid').innerHTML = '<div class="empty">Erreur de chargement. Réessaie.</div>';
   }
 }
 
 async function refresh() {
   const btn = document.getElementById('btn-refresh');
   btn.disabled = true;
-  btn.textContent = 'En cours...';
-  try {
-    await fetch('/api/refresh', { method: 'POST' });
-    await load();
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Actualiser';
-  }
+  btn.textContent = '…';
+  try { await fetch('/api/refresh', { method: 'POST' }); await load(); }
+  finally { btn.disabled = false; btn.textContent = '↺'; }
 }
 
 document.getElementById('btn-search').addEventListener('click', load);
-document.getElementById('location').addEventListener('keydown', e => {
-  if (e.key === 'Enter') load();
-});
+document.getElementById('location').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 
 load();
 </script>
