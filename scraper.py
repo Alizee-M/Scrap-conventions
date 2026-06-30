@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 CACHE_FILE = "cache/conventions.json"
 CACHE_TTL = 86400  # 24h
-BASE_URL = "https://lagendageek.com/liste-des-evenements/"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "fr-FR,fr;q=0.9",
@@ -39,7 +38,6 @@ def _parse_date(text: str) -> date | None:
     if not text:
         return None
     s = text.strip().lower()
-    # Normalize accents for month matching
     s = s.replace("é", "e").replace("è", "e").replace("û", "u").replace(".", "")
 
     year_m = re.search(r"(20\d\d)", s)
@@ -63,7 +61,7 @@ def _parse_date(text: str) -> date | None:
         return None
 
 
-def _fetch_page(url: str) -> BeautifulSoup | None:
+def _fetch(url: str) -> BeautifulSoup | None:
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
         if resp.status_code == 404:
@@ -75,15 +73,15 @@ def _fetch_page(url: str) -> BeautifulSoup | None:
         return None
 
 
-def _parse_event(el) -> dict | None:
-    # Name
+# ─── Source 1 : lagendageek.com ───────────────────────────────────────────────
+
+def _parse_lagendageek_event(el) -> dict | None:
     name_el = el.select_one("h4 a, h3 a, h2 a, .tribe-event-url a")
     if not name_el:
         return None
     name = name_el.get_text(strip=True)
     event_url = name_el.get("href", "")
 
-    # Date — try datetime attribute first
     event_date = None
     time_el = el.select_one("time[datetime]")
     if time_el and time_el.get("datetime"):
@@ -91,8 +89,6 @@ def _parse_event(el) -> dict | None:
             event_date = date.fromisoformat(time_el["datetime"][:10])
         except ValueError:
             pass
-
-    # Fallback: parse paragraph text
     if not event_date:
         for p in el.select("p"):
             parsed = _parse_date(p.get_text())
@@ -100,93 +96,226 @@ def _parse_event(el) -> dict | None:
                 event_date = parsed
                 break
 
-    # Location — 3rd <p> or address element
     location = ""
     addr_el = el.select_one("address, .tribe-events-address")
     if addr_el:
         location = addr_el.get_text(strip=True)
     else:
-        ps = el.select("p")
-        for p in ps:
+        for p in el.select("p"):
             text = p.get_text(strip=True)
-            # Skip date-like paragraphs
             if text and not re.search(r"\d{4}|@|juil|juin|mai|avr|mars|jan|fev|août|sept|oct|nov|dec", text, re.I):
                 location = text
                 break
-        if not location and len(ps) >= 2:
-            location = ps[-1].get_text(strip=True)
+        if not location:
+            ps = el.select("p")
+            if ps:
+                location = ps[-1].get_text(strip=True)
 
-    # Image
     img_el = el.select_one("img")
     image = img_el["src"] if img_el and img_el.get("src") else ""
 
-    return {
-        "name": name,
-        "date": event_date.isoformat() if event_date else None,
-        "location": location,
-        "url": event_url,
-        "image": image,
-    }
+    return {"name": name, "date": event_date.isoformat() if event_date else None,
+            "location": location, "url": event_url, "image": image, "source": "lagendageek"}
 
 
-def scrape(max_pages: int = 6) -> list[dict]:
+def scrape_lagendageek(max_pages: int = 6) -> list[dict]:
+    base = "https://lagendageek.com/liste-des-evenements/"
     today = date.today()
     results = []
 
     for page in range(1, max_pages + 1):
-        url = BASE_URL if page == 1 else f"{BASE_URL}page/{page}/"
-        soup = _fetch_page(url)
+        url = base if page == 1 else f"{base}page/{page}/"
+        soup = _fetch(url)
         if not soup:
             break
 
         events = soup.select(".event-item")
         if not events:
-            # Fallback selectors for The Events Calendar
             events = soup.select(
                 "article.tribe_events_cat, "
                 "article[class*='type-tribe_events'], "
                 ".tribe-events-loop .tribe-events-loop-event"
             )
-
         if not events:
-            logger.warning(f"No events found on page {page}, stopping")
+            logger.warning(f"lagendageek: no events on page {page}")
             break
 
         found = 0
         for el in events:
-            conv = _parse_event(el)
+            conv = _parse_lagendageek_event(el)
             if not conv:
                 continue
-            # Only keep future events
-            if conv["date"]:
-                try:
-                    if date.fromisoformat(conv["date"]) < today:
-                        continue
-                except ValueError:
-                    pass
+            if conv["date"] and date.fromisoformat(conv["date"]) < today:
+                continue
             results.append(conv)
             found += 1
 
-        logger.info(f"Page {page}: {found} events")
+        logger.info(f"lagendageek page {page}: {found} events")
         time.sleep(1.2)
 
-    # Deduplicate by name + date
-    seen = set()
+    return results
+
+
+# ─── Source 2 : rom-game.fr ───────────────────────────────────────────────────
+
+def scrape_romgame() -> list[dict]:
+    url = "https://www.rom-game.fr/agenda/"
+    today = date.today()
+    soup = _fetch(url)
+    if not soup:
+        return []
+
+    results = []
+    # Each event block: h3 with link, .event-category for location, p for date
+    for h3 in soup.select("h3"):
+        a = h3.select_one("a[href*='/agenda/']")
+        if not a:
+            continue
+        name = a.get_text(strip=True)
+        event_url = "https://www.rom-game.fr" + a["href"] if a["href"].startswith("/") else a["href"]
+
+        # Location: nearest .event-category sibling
+        location = ""
+        cat = h3.find_next_sibling(class_="event-category")
+        if not cat:
+            # Try parent container
+            parent = h3.parent
+            cat = parent.select_one(".event-category") if parent else None
+        if cat:
+            text = cat.get_text(separator=" ", strip=True)
+            # Format: "Category · City" — keep city part
+            parts = re.split(r"·|•", text)
+            location = parts[-1].strip() if parts else text
+
+        # Date: next <p> after h3 containing a year or month name
+        event_date = None
+        for sibling in h3.find_next_siblings():
+            t = sibling.get_text(strip=True)
+            parsed = _parse_date(t)
+            if parsed:
+                event_date = parsed
+                break
+            if sibling.name == "h3":
+                break
+
+        if event_date and event_date < today:
+            continue
+
+        # Image
+        parent = h3.parent
+        img_el = parent.select_one("img") if parent else None
+        image = img_el["src"] if img_el and img_el.get("src") else ""
+
+        results.append({
+            "name": name,
+            "date": event_date.isoformat() if event_date else None,
+            "location": location,
+            "url": event_url,
+            "image": image,
+            "source": "romgame",
+        })
+
+    logger.info(f"romgame: {len(results)} events")
+    time.sleep(1.2)
+    return results
+
+
+# ─── Source 3 : bede.fr ───────────────────────────────────────────────────────
+
+def scrape_bede() -> list[dict]:
+    url = "https://www.bede.fr/festivals-manga"
+    today = date.today()
+    soup = _fetch(url)
+    if not soup:
+        return []
+
+    results = []
+    # Each festival block has an id like "festival1234"
+    for section in soup.select("[id^='festival']"):
+        name_el = section.select_one("h2, h3")
+        if not name_el:
+            continue
+        name = name_el.get_text(strip=True)
+
+        # Location from <li> items
+        lis = section.select("ul li")
+        location_parts = [li.get_text(strip=True) for li in lis if li.get_text(strip=True)]
+        # Typically: [country_flag, region, dept, city] — take city (last non-empty)
+        location = location_parts[-1] if location_parts else ""
+
+        # Date from <p>
+        event_date = None
+        for p in section.select("p"):
+            parsed = _parse_date(p.get_text())
+            if parsed:
+                event_date = parsed
+                break
+
+        if event_date and event_date < today:
+            continue
+
+        # Link
+        a = section.select_one("a[href^='http']")
+        event_url = a["href"] if a else ""
+
+        img_el = section.select_one("img")
+        image = img_el["src"] if img_el and img_el.get("src") else ""
+
+        results.append({
+            "name": name,
+            "date": event_date.isoformat() if event_date else None,
+            "location": location,
+            "url": event_url,
+            "image": image,
+            "source": "bede",
+        })
+
+    logger.info(f"bede: {len(results)} events")
+    return results
+
+
+# ─── Merge & dedup ────────────────────────────────────────────────────────────
+
+def _normalize_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name.lower().strip())
+
+
+def _deduplicate(events: list[dict]) -> list[dict]:
+    seen: set[tuple] = set()
     unique = []
-    for c in results:
-        key = (c["name"].lower(), c["date"])
+    for e in events:
+        key = (_normalize_name(e["name"]), e["date"])
         if key not in seen:
             seen.add(key)
-            unique.append(c)
+            unique.append(e)
+    return unique
 
+
+def scrape_all() -> list[dict]:
+    all_events: list[dict] = []
+
+    for scraper, label in [
+        (scrape_lagendageek, "lagendageek"),
+        (scrape_romgame, "romgame"),
+        (scrape_bede, "bede"),
+    ]:
+        try:
+            events = scraper()
+            all_events.extend(events)
+            logger.info(f"{label}: {len(events)} events scraped")
+        except Exception as e:
+            logger.error(f"{label} scraper failed: {e}")
+
+    unique = _deduplicate(all_events)
     return sorted(unique, key=lambda x: x["date"] or "9999")
 
+
+# ─── Cache ────────────────────────────────────────────────────────────────────
 
 def load_cache() -> list[dict] | None:
     if not os.path.exists(CACHE_FILE):
         return None
-    stat = os.stat(CACHE_FILE)
-    if time.time() - stat.st_mtime > CACHE_TTL:
+    if time.time() - os.stat(CACHE_FILE).st_mtime > CACHE_TTL:
         return None
     with open(CACHE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -204,8 +333,8 @@ def get_conventions(force_refresh: bool = False) -> list[dict]:
         if cached is not None:
             return cached
 
-    logger.info("Scraping lagendageek.com...")
-    data = scrape()
+    logger.info("Scraping all sources...")
+    data = scrape_all()
     save_cache(data)
-    logger.info(f"Scraped {len(data)} upcoming events")
+    logger.info(f"Total: {len(data)} upcoming events cached")
     return data

@@ -2,7 +2,12 @@
 
 App web qui liste les conventions manga et culture japonaise à venir (France + pays limitrophes), avec tri par date ou par distance depuis ta ville.
 
-**Source des données :** [lagendageek.com](https://lagendageek.com/liste-des-evenements/) — scraping automatique, cache 24h.
+**Sources des données (scraping automatique, cache 24h) :**
+- [lagendageek.com](https://lagendageek.com/liste-des-evenements/) — agenda geek/manga France + voisins
+- [rom-game.fr](https://www.rom-game.fr/agenda/) — 200+ événements jeux/manga/culture pop
+- [bede.fr](https://www.bede.fr/festivals-manga) — festivals manga spécialisés
+
+Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 
 ---
 
