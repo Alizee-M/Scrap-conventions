@@ -12,26 +12,13 @@ app = Flask(__name__)
 _refresh_lock = threading.Lock()
 
 
-def _enrich_with_coords(conventions: list[dict]) -> list[dict]:
-    """Add lat/lon to each convention (cached via geocoder)."""
-    for conv in conventions:
-        if "lat" not in conv and conv.get("location"):
-            coords = geocode(conv["location"])
-            if coords:
-                conv["lat"], conv["lon"] = coords
-            else:
-                conv["lat"] = conv["lon"] = None
-    return conventions
-
-
 def _background_refresh():
     while True:
         time.sleep(86400)
         logger.info("Background refresh triggered")
         with _refresh_lock:
             try:
-                convs = get_conventions(force_refresh=True)
-                _enrich_with_coords(convs)
+                get_conventions(force_refresh=True)
             except Exception as e:
                 logger.error(f"Background refresh failed: {e}")
 
@@ -48,7 +35,6 @@ def api_conventions():
     user_lon = request.args.get("lon", type=float)
     location_name = request.args.get("location", "")
 
-    # Geocode user location if provided as text
     if location_name and (user_lat is None or user_lon is None):
         coords = geocode(location_name)
         if coords:
@@ -56,7 +42,6 @@ def api_conventions():
 
     with _refresh_lock:
         convs = get_conventions()
-        _enrich_with_coords(convs)
 
     result = []
     for c in convs:
@@ -91,21 +76,18 @@ def api_refresh():
     with _refresh_lock:
         try:
             convs = get_conventions(force_refresh=True)
-            _enrich_with_coords(convs)
             return jsonify({"count": len(convs)})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    # Initial scrape on startup
-    logger.info("Initial scrape on startup...")
+    logger.info("Initial load on startup...")
     try:
         convs = get_conventions()
-        _enrich_with_coords(convs)
         logger.info(f"Ready with {len(convs)} conventions")
     except Exception as e:
-        logger.error(f"Startup scrape failed: {e}")
+        logger.error(f"Startup load failed: {e}")
 
     t = threading.Thread(target=_background_refresh, daemon=True)
     t.start()

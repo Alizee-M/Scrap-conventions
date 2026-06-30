@@ -335,6 +335,15 @@ def get_conventions(force_refresh: bool = False) -> list[dict]:
 
     logger.info("Scraping all sources...")
     data = scrape_all()
+
+    # Geocode at scrape time so coords are in cache — never at request time
+    from geocoder import geocode
+    logger.info(f"Geocoding {len(data)} events (this may take a while)...")
+    for conv in data:
+        if conv.get("location") and "lat" not in conv:
+            coords = geocode(conv["location"])
+            conv["lat"], conv["lon"] = (coords[0], coords[1]) if coords else (None, None)
+
     save_cache(data)
-    logger.info(f"Total: {len(data)} upcoming events cached")
+    logger.info(f"Total: {len(data)} events cached with coordinates")
     return data
