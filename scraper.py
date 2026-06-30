@@ -217,9 +217,10 @@ def scrape_romgame() -> list[dict]:
         if event_date and event_date < today:
             continue
 
-        # Image
-        parent = h3.parent
-        img_el = parent.select_one("img") if parent else None
+        # Image: lives in the sibling .tag-horizontal-img-wrap, not under h3's
+        # own parent (.tag-horizontal-body) — look one level up at .tag-horizontal.
+        card = h3.parent.parent if h3.parent else None
+        img_el = card.select_one("img") if card else None
         image = img_el["src"] if img_el and img_el.get("src") else ""
 
         results.append({
