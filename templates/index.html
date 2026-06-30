@@ -97,6 +97,41 @@
 
   input[type="text"]:focus { border-color: var(--accent); }
 
+  .location-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .location-wrap input[type="text"] { width: 100%; }
+
+  .suggestions {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    overflow: hidden;
+    z-index: 50;
+  }
+
+  .suggestions.open { display: block; }
+
+  .suggestion-item {
+    padding: 0.6rem 0.85rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .suggestion-item:last-child { border-bottom: none; }
+  .suggestion-item:hover, .suggestion-item.highlighted { background: var(--border); }
+  .suggestion-item .sugg-postcode { color: var(--muted); font-size: 0.78rem; margin-left: 0.4rem; }
+
   button {
     background: var(--accent2);
     color: #fff;
@@ -432,7 +467,10 @@
 <div class="controls">
   <!-- Row 1 : search -->
   <div class="controls-row" style="flex:1; width:100%;">
-    <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" value="Saint-Estève" />
+    <div class="location-wrap">
+      <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" value="Saint-Estève" />
+      <div id="location-suggestions" class="suggestions"></div>
+    </div>
     <button id="btn-search">Chercher</button>
   </div>
   <!-- Row 2 : sort + view + refresh -->
@@ -663,13 +701,17 @@ function renderAll(data) {
 }
 
 // ── Data ─────────────────────────────────────────────────────────────────────
-async function load() {
+async function load(coords) {
   const loc = document.getElementById('location').value.trim();
   document.getElementById('grid').innerHTML =
     '<div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div><p style="margin-top:1rem">Chargement...</p></div>';
 
   let url = `/api/conventions?sort=${currentSort}`;
-  if (loc) url += `&location=${encodeURIComponent(loc)}`;
+  if (coords) {
+    url += `&lat=${coords.lat}&lon=${coords.lon}`;
+  } else if (loc) {
+    url += `&location=${encodeURIComponent(loc)}`;
+  }
 
   try {
     const data = await fetch(url).then(r => r.json());
@@ -692,8 +734,95 @@ async function refresh() {
   finally { btn.disabled = false; btn.textContent = '↺'; }
 }
 
-document.getElementById('btn-search').addEventListener('click', load);
-document.getElementById('location').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+// ── Autocomplétion ville (API Adresse data.gouv.fr) ─────────────────────────
+const locationInput = document.getElementById('location');
+const suggestionsBox = document.getElementById('location-suggestions');
+let suggestions = [];
+let highlightedIndex = -1;
+let suggestDebounce = null;
+
+function closeSuggestions() {
+  suggestionsBox.classList.remove('open');
+  suggestionsBox.innerHTML = '';
+  suggestions = [];
+  highlightedIndex = -1;
+}
+
+function renderSuggestions() {
+  if (!suggestions.length) { closeSuggestions(); return; }
+  suggestionsBox.innerHTML = suggestions.map((s, i) => `
+    <div class="suggestion-item${i === highlightedIndex ? ' highlighted' : ''}" data-index="${i}">
+      ${s.city}<span class="sugg-postcode">${s.postcode} · ${s.context}</span>
+    </div>`).join('');
+  suggestionsBox.classList.add('open');
+}
+
+async function fetchSuggestions(query) {
+  try {
+    const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&type=municipality&limit=5`;
+    const data = await fetch(url).then(r => r.json());
+    suggestions = (data.features || []).map(f => ({
+      city: f.properties.city,
+      postcode: f.properties.postcode,
+      context: f.properties.context,
+      lat: f.geometry.coordinates[1],
+      lon: f.geometry.coordinates[0],
+    }));
+    highlightedIndex = -1;
+    renderSuggestions();
+  } catch {
+    closeSuggestions();
+  }
+}
+
+function selectSuggestion(s) {
+  locationInput.value = s.city;
+  closeSuggestions();
+  load({ lat: s.lat, lon: s.lon });
+}
+
+locationInput.addEventListener('input', () => {
+  const q = locationInput.value.trim();
+  clearTimeout(suggestDebounce);
+  if (q.length < 2) { closeSuggestions(); return; }
+  suggestDebounce = setTimeout(() => fetchSuggestions(q), 250);
+});
+
+locationInput.addEventListener('keydown', e => {
+  if (suggestions.length && suggestionsBox.classList.contains('open')) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightedIndex = (highlightedIndex + 1) % suggestions.length;
+      renderSuggestions();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightedIndex = (highlightedIndex - 1 + suggestions.length) % suggestions.length;
+      renderSuggestions();
+      return;
+    }
+    if (e.key === 'Escape') { closeSuggestions(); return; }
+    if (e.key === 'Enter' && highlightedIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[highlightedIndex]);
+      return;
+    }
+  }
+  if (e.key === 'Enter') { closeSuggestions(); load(); }
+});
+
+suggestionsBox.addEventListener('click', e => {
+  const item = e.target.closest('.suggestion-item');
+  if (!item) return;
+  selectSuggestion(suggestions[parseInt(item.dataset.index, 10)]);
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.location-wrap')) closeSuggestions();
+});
+
+document.getElementById('btn-search').addEventListener('click', () => { closeSuggestions(); load(); });
 
 const distSlider = document.getElementById('distance-slider');
 const distValueEl = document.getElementById('dist-value');
