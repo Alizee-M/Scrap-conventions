@@ -60,6 +60,86 @@ def api_conventions():
     return jsonify({"conventions": result, "user_lat": user_lat, "user_lon": user_lon})
 
 
+@app.route("/sources")
+def sources_page():
+    return render_template("sources.html")
+
+
+@app.route("/api/sources")
+def api_sources():
+    import os, time as _time
+    from scraper import CACHE_FILE
+
+    with _refresh_lock:
+        convs = get_conventions()
+
+    counts = {}
+    for c in convs:
+        src = c.get("source", "inconnu")
+        counts[src] = counts.get(src, 0) + 1
+
+    cache_age = None
+    if os.path.exists(CACHE_FILE):
+        cache_age = int(_time.time() - os.stat(CACHE_FILE).st_mtime)
+
+    sources = [
+        {
+            "name": "L'Agenda Geek",
+            "key": "lagendageek",
+            "url": "https://lagendageek.com/liste-des-evenements/",
+            "description": "Agenda geek France + Belgique + Suisse",
+            "status": "active",
+            "events": counts.get("lagendageek", 0),
+        },
+        {
+            "name": "Rom-Game",
+            "key": "romgame",
+            "url": "https://www.rom-game.fr/agenda/",
+            "description": "Conventions jeux, manga, culture pop (200+ events)",
+            "status": "active",
+            "events": counts.get("romgame", 0),
+        },
+        {
+            "name": "Bédé.fr",
+            "key": "bede",
+            "url": "https://www.bede.fr/festivals-manga",
+            "description": "Festivals manga spécialisés",
+            "status": "active",
+            "events": counts.get("bede", 0),
+        },
+        {
+            "name": "Nautiljon",
+            "key": "nautiljon",
+            "url": "https://www.nautiljon.com/evenements/",
+            "description": "Agenda anime/manga — bloqué (403)",
+            "status": "blocked",
+            "events": 0,
+        },
+        {
+            "name": "Manga-News",
+            "key": "manganews",
+            "url": "https://www.manga-news.com/index.php/agenda/",
+            "description": "Agenda manga — bloqué (403)",
+            "status": "blocked",
+            "events": 0,
+        },
+        {
+            "name": "Rostercon",
+            "key": "rostercon",
+            "url": "https://www.rostercon.com/en/location/france-en",
+            "description": "Conventions France — trop peu d'events (7), pas retenu",
+            "status": "rejected",
+            "events": 0,
+        },
+    ]
+
+    return jsonify({
+        "sources": sources,
+        "total_events": len(convs),
+        "cache_age_seconds": cache_age,
+    })
+
+
 @app.route("/api/geocode")
 def api_geocode():
     q = request.args.get("q", "")
