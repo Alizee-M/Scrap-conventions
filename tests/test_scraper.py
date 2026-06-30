@@ -10,7 +10,42 @@ To refresh a fixture after a real, intentional site redesign:
     curl -s -A "Mozilla/5.0" <source url> -o tests/fixtures/<name>.html
 then re-check the assertions below still describe events actually on the page.
 """
+import time
+
 import scraper
+
+
+# ─── scrape_all ─────────────────────────────────────────────────────────────
+
+def test_scrape_all_dedup_priority_is_source_order_not_completion_order(monkeypatch):
+    """The 3 scrapers run concurrently now, but when two sources cover the
+    same (name, date) event, the one earlier in the fixed source list
+    [lagendageek, romgame, bede] must still win — regardless of which
+    thread happens to finish first."""
+    same_event_lagendageek = {
+        "name": "Dup Con", "date": "2026-09-01", "location": "From lagendageek",
+        "url": "https://lagendageek.com/x", "image": "", "source": "lagendageek",
+    }
+    same_event_romgame = {
+        "name": "Dup Con", "date": "2026-09-01", "location": "From romgame",
+        "url": "https://romgame.fr/x", "image": "", "source": "romgame",
+    }
+
+    def slow_lagendageek():
+        time.sleep(0.05)  # finishes second
+        return [same_event_lagendageek]
+
+    def fast_romgame():
+        return [same_event_romgame]  # finishes first, but must still lose
+
+    monkeypatch.setattr(scraper, "scrape_lagendageek", slow_lagendageek)
+    monkeypatch.setattr(scraper, "scrape_romgame", fast_romgame)
+    monkeypatch.setattr(scraper, "scrape_bede", lambda: [])
+    monkeypatch.setattr(scraper, "save_source_health", lambda health: None)
+
+    result = scraper.scrape_all()
+    assert len(result) == 1
+    assert result[0]["location"] == "From lagendageek"
 
 
 # ─── lagendageek.com ───────────────────────────────────────────────────────
