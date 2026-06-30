@@ -99,7 +99,10 @@ def _parse_lagendageek_event(el) -> dict | None:
     location = ""
     addr_el = el.select_one("address, .tribe-events-address")
     if addr_el:
-        location = addr_el.get_text(strip=True)
+        # Prefer just the venue-title line — addr_el.get_text(strip=True) would
+        # otherwise mash it together with the street-address line with no space.
+        venue_title = addr_el.select_one(".tribe-events-calendar-list__event-venue-title")
+        location = venue_title.get_text(strip=True) if venue_title else addr_el.get_text(separator=" ", strip=True)
     else:
         for p in el.select("p"):
             text = p.get_text(strip=True)
@@ -118,6 +121,29 @@ def _parse_lagendageek_event(el) -> dict | None:
             "location": location, "url": event_url, "image": image, "source": "lagendageek"}
 
 
+def _select_lagendageek_events(soup: BeautifulSoup) -> list:
+    events = soup.select(".event-item")
+    if not events:
+        events = soup.select(
+            "article.tribe_events_cat, "
+            "article[class*='type-tribe_events'], "
+            ".tribe-events-loop .tribe-events-loop-event"
+        )
+    return events
+
+
+def _parse_lagendageek_page(soup: BeautifulSoup, today: date) -> list[dict]:
+    results = []
+    for el in _select_lagendageek_events(soup):
+        conv = _parse_lagendageek_event(el)
+        if not conv:
+            continue
+        if conv["date"] and date.fromisoformat(conv["date"]) < today:
+            continue
+        results.append(conv)
+    return results
+
+
 def scrape_lagendageek(max_pages: int = 6) -> list[dict]:
     base = "https://lagendageek.com/liste-des-evenements/"
     today = date.today()
@@ -129,28 +155,13 @@ def scrape_lagendageek(max_pages: int = 6) -> list[dict]:
         if not soup:
             break
 
-        events = soup.select(".event-item")
-        if not events:
-            events = soup.select(
-                "article.tribe_events_cat, "
-                "article[class*='type-tribe_events'], "
-                ".tribe-events-loop .tribe-events-loop-event"
-            )
-        if not events:
+        if not _select_lagendageek_events(soup):
             logger.warning(f"lagendageek: no events on page {page}")
             break
 
-        found = 0
-        for el in events:
-            conv = _parse_lagendageek_event(el)
-            if not conv:
-                continue
-            if conv["date"] and date.fromisoformat(conv["date"]) < today:
-                continue
-            results.append(conv)
-            found += 1
-
-        logger.info(f"lagendageek page {page}: {found} events")
+        page_events = _parse_lagendageek_page(soup, today)
+        results.extend(page_events)
+        logger.info(f"lagendageek page {page}: {len(page_events)} events")
         time.sleep(1.2)
 
     return results
@@ -172,13 +183,7 @@ def _romgame_detail_location(event_url: str) -> str:
     return city_link.get_text(strip=True) if city_link else ""
 
 
-def scrape_romgame() -> list[dict]:
-    url = "https://www.rom-game.fr/agenda/"
-    today = date.today()
-    soup = _fetch(url)
-    if not soup:
-        return []
-
+def _parse_romgame_page(soup: BeautifulSoup, today: date, fetch_detail_fallback: bool = True) -> list[dict]:
     results = []
     # Each event block: h3 with link, .event-category for location, p for date
     for h3 in soup.select("h3"):
@@ -199,7 +204,7 @@ def scrape_romgame() -> list[dict]:
             parts = re.split(r"·|•", text)
             location = parts[-1].strip() if parts else text
 
-        if not location:
+        if not location and fetch_detail_fallback:
             location = _romgame_detail_location(event_url)
             time.sleep(0.6)
 
@@ -232,6 +237,17 @@ def scrape_romgame() -> list[dict]:
             "source": "romgame",
         })
 
+    return results
+
+
+def scrape_romgame() -> list[dict]:
+    url = "https://www.rom-game.fr/agenda/"
+    today = date.today()
+    soup = _fetch(url)
+    if not soup:
+        return []
+
+    results = _parse_romgame_page(soup, today)
     logger.info(f"romgame: {len(results)} events")
     time.sleep(1.2)
     return results
@@ -239,43 +255,38 @@ def scrape_romgame() -> list[dict]:
 
 # ─── Source 3 : bede.fr ───────────────────────────────────────────────────────
 
-def scrape_bede() -> list[dict]:
-    url = "https://www.bede.fr/festivals-manga"
-    today = date.today()
-    soup = _fetch(url)
-    if not soup:
-        return []
-
+def _parse_bede_page(soup: BeautifulSoup, today: date) -> list[dict]:
     results = []
-    # Each festival block has an id like "festival1234"
-    for section in soup.select("[id^='festival']"):
-        name_el = section.select_one("h2, h3")
+    # Each event is schema.org/Event microdata (the old [id^='festival'] markup is gone)
+    for section in soup.select('[itemscope][itemtype="https://schema.org/Event"]'):
+        name_el = section.select_one('h2[itemprop="name"]')
         if not name_el:
             continue
         name = name_el.get_text(strip=True)
 
-        # Location from <li> items
-        lis = section.select("ul li")
-        location_parts = [li.get_text(strip=True) for li in lis if li.get_text(strip=True)]
-        # Typically: [country_flag, region, dept, city] — take city (last non-empty)
-        location = location_parts[-1] if location_parts else ""
-
-        # Date from <p>
         event_date = None
-        for p in section.select("p"):
-            parsed = _parse_date(p.get_text())
-            if parsed:
-                event_date = parsed
-                break
+        start_el = section.select_one('meta[itemprop="startDate"]')
+        if start_el and start_el.get("content"):
+            try:
+                event_date = date.fromisoformat(start_el["content"][:10])
+            except ValueError:
+                pass
 
         if event_date and event_date < today:
             continue
 
-        # Link
-        a = section.select_one("a[href^='http']")
-        event_url = a["href"] if a else ""
+        # City + ISO country code from the structured address, e.g. "Bruxelles (BE)"
+        # so normalize_location() can recognize it without guessing France by default.
+        locality_el = section.select_one('[itemprop="address"] meta[itemprop="addressLocality"]')
+        country_el = section.select_one('[itemprop="address"] meta[itemprop="addressCountry"]')
+        city = locality_el["content"].strip() if locality_el and locality_el.get("content") else ""
+        country = country_el["content"].strip() if country_el and country_el.get("content") else ""
+        location = f"{city} ({country})" if city and country and country != "FR" else city
 
-        img_el = section.select_one("img")
+        url_el = section.select_one('a[itemprop="url"]')
+        event_url = url_el["href"] if url_el and url_el.get("href") else ""
+
+        img_el = section.select_one('img[itemprop="image"]')
         image = img_el["src"] if img_el and img_el.get("src") else ""
 
         results.append({
@@ -287,6 +298,17 @@ def scrape_bede() -> list[dict]:
             "source": "bede",
         })
 
+    return results
+
+
+def scrape_bede() -> list[dict]:
+    url = "https://www.bede.fr/festivals-manga"
+    today = date.today()
+    soup = _fetch(url)
+    if not soup:
+        return []
+
+    results = _parse_bede_page(soup, today)
     logger.info(f"bede: {len(results)} events")
     return results
 
@@ -310,24 +332,50 @@ def _deduplicate(events: list[dict]) -> list[dict]:
 
 def scrape_all() -> list[dict]:
     all_events: list[dict] = []
+    health = {}
 
     for scraper, label in [
         (scrape_lagendageek, "lagendageek"),
         (scrape_romgame, "romgame"),
         (scrape_bede, "bede"),
     ]:
+        scraped_at = datetime.now().isoformat(timespec="seconds")
         try:
             events = scraper()
             all_events.extend(events)
             logger.info(f"{label}: {len(events)} events scraped")
+            health[label] = {"count": len(events), "scraped_at": scraped_at, "error": None}
+            if len(events) == 0:
+                logger.error(f"{label}: scraper returned 0 events — the site likely changed structure")
         except Exception as e:
             logger.error(f"{label} scraper failed: {e}")
+            health[label] = {"count": 0, "scraped_at": scraped_at, "error": str(e)}
+
+    save_source_health(health)
 
     unique = _deduplicate(all_events)
     return sorted(unique, key=lambda x: x["date"] or "9999")
 
 
 # ─── Cache ────────────────────────────────────────────────────────────────────
+
+HEALTH_FILE = "cache/source_health.json"
+
+
+def save_source_health(health: dict):
+    """Raw per-source scrape counts (pre-dedup), so a source silently breaking
+    isn't masked by another source happening to cover the same events."""
+    os.makedirs("cache", exist_ok=True)
+    with open(HEALTH_FILE, "w", encoding="utf-8") as f:
+        json.dump(health, f, ensure_ascii=False, indent=2)
+
+
+def load_source_health() -> dict:
+    if not os.path.exists(HEALTH_FILE):
+        return {}
+    with open(HEALTH_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
 
 def load_cache() -> list[dict] | None:
     """Load whatever is cached on disk, regardless of age — staleness is handled by

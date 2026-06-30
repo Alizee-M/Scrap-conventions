@@ -74,9 +74,8 @@ def normalize_location(raw: str) -> str:
     """Extract city from location strings like 'Tours (37) - Parc des Expositions...'"""
     raw = raw.strip()
 
-    # Strip venue/address after " - " separator: "City (37) - Venue name" → "City (37)"
-    if " - " in raw:
-        raw = raw.split(" - ")[0].strip()
+    # Strip venue/address after a " - "/" – "/" — " separator: "City (37) – Venue name" → "City (37)"
+    raw = re.split(r"\s[-–—]\s", raw, maxsplit=1)[0].strip()
 
     # "City (dept_number)" → French city
     m = re.match(r"^(.+?)\s*\(\d+\)\s*$", raw)
@@ -106,6 +105,15 @@ def normalize_location(raw: str) -> str:
     if re.search(r"\b(belgium|spain|switzerland|netherlands)\b", lower):
         return raw
 
+    # No explicit country signal in the text — default to France, since the
+    # vast majority of sources we scrape are French listings with bare city
+    # names ("Tours", "Souterraine"...). Known limitation: a bare name that
+    # happens to collide with an obscure French homonym of a famous foreign
+    # city (e.g. rom-game.fr's "Montréal" — there's also a 2 000-person
+    # village called Montréal in Aude) will resolve to the French village
+    # instead. Fixing this generally would mean skipping the fast/accurate
+    # BAN lookup for every unmarked French city just to catch rare name
+    # collisions, which isn't worth the cost — accepted as-is.
     return f"{raw}, France"
 
 
