@@ -415,7 +415,7 @@
     }
 
     .controls-row { flex: none; }
-    .controls-row:first-child { flex: 1; }
+    .controls-row-search { flex: 1; }
 
     .btn-group { flex: none; }
     .btn-group button { flex: none; padding: 0 0.85rem; }
@@ -465,15 +465,7 @@
 </header>
 
 <div class="controls">
-  <!-- Row 1 : search -->
-  <div class="controls-row" style="flex:1; width:100%;">
-    <div class="location-wrap">
-      <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" value="Saint-Estève" />
-      <div id="location-suggestions" class="suggestions"></div>
-    </div>
-    <button id="btn-search">Chercher</button>
-  </div>
-  <!-- Row 2 : sort + view + refresh -->
+  <!-- Row 1 : sort + view + refresh -->
   <div class="controls-row" style="width:100%; justify-content:space-between;">
     <div class="btn-group">
       <button id="btn-date" class="active" onclick="setSort('date')">Par date</button>
@@ -485,7 +477,7 @@
     </div>
     <button class="btn-refresh" id="btn-refresh" onclick="refresh()" style="margin-left:0.5rem;">↺</button>
   </div>
-  <!-- Row 3 : filters -->
+  <!-- Row 2 : filters -->
   <div class="controls-row" style="width:100%; flex-wrap:wrap; gap:0.7rem;">
     <div class="filter-group">
       <label class="filter-label">Distance max : <span id="dist-value">Toutes distances</span></label>
@@ -508,6 +500,14 @@
         <input type="date" id="date-to">
       </div>
     </div>
+  </div>
+  <!-- Row 3 : search (ville, en dernier) -->
+  <div class="controls-row controls-row-search" style="flex:1; width:100%;">
+    <div class="location-wrap">
+      <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" value="Saint-Estève" />
+      <div id="location-suggestions" class="suggestions"></div>
+    </div>
+    <button id="btn-search">Chercher</button>
   </div>
 </div>
 
