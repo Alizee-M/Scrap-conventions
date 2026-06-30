@@ -158,6 +158,20 @@ def scrape_lagendageek(max_pages: int = 6) -> list[dict]:
 
 # ─── Source 2 : rom-game.fr ───────────────────────────────────────────────────
 
+def _romgame_detail_location(event_url: str) -> str:
+    """Fallback when the listing page has no location: read the city from the
+    event's own page, in the .evt-hero-meta span next to the map-marker icon."""
+    soup = _fetch(event_url)
+    if not soup:
+        return ""
+    marker = soup.select_one(".evt-hero-meta i.fa-map-marker-alt")
+    if not marker:
+        return ""
+    span = marker.find_parent("span")
+    city_link = span.select_one("a") if span else None
+    return city_link.get_text(strip=True) if city_link else ""
+
+
 def scrape_romgame() -> list[dict]:
     url = "https://www.rom-game.fr/agenda/"
     today = date.today()
@@ -184,6 +198,10 @@ def scrape_romgame() -> list[dict]:
             # Format: "Category · City" — keep city part
             parts = re.split(r"·|•", text)
             location = parts[-1].strip() if parts else text
+
+        if not location:
+            location = _romgame_detail_location(event_url)
+            time.sleep(0.6)
 
         # Date: next <p> after h3 containing a year or month name
         event_date = None
