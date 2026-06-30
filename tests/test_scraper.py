@@ -1,0 +1,113 @@
+"""Regression tests against real, saved HTML snapshots.
+
+These exist because both rom-game.fr and bede.fr silently changed their HTML
+structure in the past, and the app kept running while quietly losing data
+(empty locations/images, or a source dropping to 0 events). If a site changes
+its markup again, these tests should fail instead of the breakage going
+unnoticed in production.
+
+To refresh a fixture after a real, intentional site redesign:
+    curl -s -A "Mozilla/5.0" <source url> -o tests/fixtures/<name>.html
+then re-check the assertions below still describe events actually on the page.
+"""
+import scraper
+
+
+# ─── lagendageek.com ───────────────────────────────────────────────────────
+
+def test_lagendageek_parses_known_event(load_fixture, fixed_today):
+    soup = load_fixture("lagendageek.html")
+    events = scraper._parse_lagendageek_page(soup, fixed_today)
+
+    assert len(events) > 10
+
+    by_name = {e["name"]: e for e in events}
+    event = by_name["Japan Tours Festival 2026"]
+    assert event["date"] == "2026-07-03"
+    assert event["location"] == "Tours (37) – Parc des Expositions de Tours"
+    assert event["url"] == "https://lagendageek.com/tevent/japan-tours-festival-2026/"
+    assert event["image"]
+    assert event["source"] == "lagendageek"
+
+
+def test_lagendageek_all_events_have_name_and_url(load_fixture, fixed_today):
+    soup = load_fixture("lagendageek.html")
+    events = scraper._parse_lagendageek_page(soup, fixed_today)
+    for e in events:
+        assert e["name"]
+        assert e["url"]
+
+
+# ─── rom-game.fr ────────────────────────────────────────────────────────────
+
+def test_romgame_parses_known_events(load_fixture, fixed_today):
+    soup = load_fixture("romgame.html")
+    events = scraper._parse_romgame_page(soup, fixed_today, fetch_detail_fallback=False)
+
+    assert len(events) > 50
+
+    by_name = {e["name"]: e for e in events}
+
+    magic = by_name["Magic Odyssey 2026"]
+    assert magic["date"] == "2026-07-03"
+    assert magic["location"] == "Souterraine"
+    assert magic["url"] == "https://www.rom-game.fr/agenda/8241-magic+odyssey.html"
+    assert magic["image"] == (
+        "https://www.rom-game.fr/multimedia/agendaM/magic-odyssey-souterraine-20260123-120907.webp"
+    )
+
+    comiccon = by_name["Comiccon de Montréal 2026"]
+    assert comiccon["location"] == "Montréal"
+    assert comiccon["image"]
+
+
+def test_romgame_no_network_call_when_fallback_disabled(load_fixture, fixed_today):
+    """fetch_detail_fallback=False must never hit the network, even for events
+    whose listing-page location would otherwise be empty."""
+    soup = load_fixture("romgame.html")
+    events = scraper._parse_romgame_page(soup, fixed_today, fetch_detail_fallback=False)
+    assert all(isinstance(e["location"], str) for e in events)
+
+
+def test_romgame_detail_location_fallback(load_fixture, monkeypatch):
+    """When the listing page has no location, scraper falls back to the
+    event's own page and reads .evt-hero-meta's map-marker span."""
+    detail_soup = load_fixture("romgame_detail_magic_odyssey.html")
+    monkeypatch.setattr(scraper, "_fetch", lambda url: detail_soup)
+    monkeypatch.setattr(scraper.time, "sleep", lambda *_: None)
+
+    location = scraper._romgame_detail_location("https://www.rom-game.fr/agenda/8241-magic+odyssey.html")
+    assert location == "Souterraine"
+
+
+# ─── bede.fr ──────────────────────────────────────────────────────────────
+
+def test_bede_parses_known_events(load_fixture, fixed_today):
+    soup = load_fixture("bede.html")
+    events = scraper._parse_bede_page(soup, fixed_today)
+
+    assert len(events) == 2
+    by_name = {e["name"]: e for e in events}
+
+    e1 = by_name["2ème édition du festival Japan Bibli Gaming"]
+    assert e1["date"] == "2026-08-01"
+    assert e1["location"] == "Saint-Germain-du-Puy"
+    assert e1["url"] == "https://www.bede.fr/festivals-manga#festival2911"
+
+    e2 = by_name["6ème édition du Hashtag festival de Bourg-en-Bresse"]
+    assert e2["date"] == "2026-10-17"
+    assert e2["location"] == "Bourg-en-Bresse"
+
+
+def test_bede_french_events_have_no_country_suffix(load_fixture, fixed_today):
+    """addressCountry feeds straight into normalize_location()'s existing
+    'City (XX)' pattern so foreign events don't default to France — but for
+    France itself, the location stays a bare city name."""
+    soup = load_fixture("bede.html")
+    for section in soup.select('[itemscope][itemtype="https://schema.org/Event"]'):
+        country_el = section.select_one('[itemprop="address"] meta[itemprop="addressCountry"]')
+        assert country_el is not None and country_el["content"] == "FR"
+
+    events = scraper._parse_bede_page(soup, fixed_today)
+    for e in events:
+        assert "(" not in e["location"]
