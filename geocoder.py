@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 CACHE_FILE = "cache/geocode_cache.json"
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+BAN_URL = "https://api-adresse.data.gouv.fr/search/"
+BAN_MIN_SCORE = 0.5
 HEADERS = {"User-Agent": "ScrapConventions/1.0 (alizeemeyer@gmail.com)"}
 
 _cache = {}
@@ -47,6 +49,24 @@ def _nominatim_query(q: str) -> tuple[float, float] | None:
             return float(data[0]["lat"]), float(data[0]["lon"])
     except Exception as e:
         logger.warning(f"Nominatim error for '{q}': {e}")
+    return None
+
+
+def _ban_query(city: str) -> tuple[float, float] | None:
+    """French government address API (api-adresse.data.gouv.fr) — fast, no rate limit, France only."""
+    try:
+        resp = requests.get(
+            BAN_URL,
+            params={"q": city, "type": "municipality", "limit": 1},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        features = resp.json().get("features", [])
+        if features and features[0]["properties"]["score"] >= BAN_MIN_SCORE:
+            lon, lat = features[0]["geometry"]["coordinates"]
+            return lat, lon
+    except (requests.RequestException, KeyError, ValueError) as e:
+        logger.warning(f"BAN error for '{city}': {e}")
     return None
 
 
@@ -98,7 +118,12 @@ def geocode(location: str) -> tuple[float, float] | None:
     if normalized in _cache:
         return tuple(_cache[normalized]) if _cache[normalized] else None
 
-    result = _nominatim_query(normalized)
+    result = None
+    if normalized.endswith(", France"):
+        result = _ban_query(normalized[: -len(", France")])
+    if not result:
+        result = _nominatim_query(normalized)
+
     _cache[normalized] = list(result) if result else None
     _save_cache()
     return result
