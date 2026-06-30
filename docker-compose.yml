@@ -6,4 +6,7 @@ services:
     ports:
       - "5050:5000"
     volumes:
-      - /share/scrap-conventions/cache:/app/cache
+      - scrap-conventions-cache:/app/cache
+
+volumes:
+  scrap-conventions-cache:
