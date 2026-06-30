@@ -318,7 +318,12 @@ def load_cache() -> list[dict] | None:
     if time.time() - os.stat(CACHE_FILE).st_mtime > CACHE_TTL:
         return None
     with open(CACHE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    # Invalidate cache if it predates geocoding (no lat/lon fields)
+    if data and "lat" not in data[0]:
+        logger.info("Cache has no coordinates, invalidating to trigger re-geocoding")
+        return None
+    return data
 
 
 def save_cache(data: list[dict]):
