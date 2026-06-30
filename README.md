@@ -13,18 +13,19 @@ Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 
 ## Fonctionnalités
 
-- Scraping automatique des conventions à venir
-- Recherche par ville (géocodage via Nominatim/OpenStreetMap)
-- Tri par **date** ou par **distance**
-- Rafraîchissement manuel ou automatique toutes les 24h
-- UI dark mode, responsive
+- Scraping automatique des conventions à venir (les 3 sources sont scrapées en parallèle)
+- Recherche par ville avec autocomplétion (géocodage via l'API Adresse data.gouv.fr, repli sur Nominatim/OpenStreetMap pour l'étranger)
+- Filtres par distance (slider) et par date (presets + plage), tri par **date** ou par **distance**
+- Rafraîchissement manuel ou automatique toutes les 24h, sans jamais bloquer une requête
+- Page `/sources` avec health-check visible par source (alerte si une source casse)
+- UI dark mode, responsive, installable comme PWA sur mobile (icône d'accueil)
 
 ---
 
 ## Variables d'environnement
 
 Cette app ne nécessite **aucune variable d'environnement** — pas d'API key, pas de token.  
-Elle utilise uniquement Nominatim (OpenStreetMap, gratuit et sans clé) pour le géocodage.
+Elle utilise l'API Adresse (data.gouv.fr) et Nominatim (OpenStreetMap), gratuits et sans clé, pour le géocodage.
 
 > Si tu ajoutes une intégration future nécessitant une clé, ne jamais la mettre dans le code :  
 > configure-la comme variable d'environnement dans Portainer (voir section déploiement).
@@ -74,12 +75,15 @@ L'app tourne sur `http://localhost:5000`.
 
 ```
 ├── app.py                          # Flask + API REST
-├── scraper.py                      # Scraping 3 sources
-├── geocoder.py                     # Géocodage Nominatim + haversine
+├── scraper.py                      # Scraping 3 sources (en parallèle)
+├── geocoder.py                     # Géocodage BAN + repli Nominatim, haversine
 ├── templates/
-│   └── index.html                  # Interface dark mode
+│   ├── index.html                  # Interface dark mode
+│   └── sources.html                # Health-check des sources
+├── static/                         # Icônes PWA + manifest.json
+├── tests/                          # Tests de régression (pytest) sur fixtures HTML réelles
 ├── .github/workflows/
-│   └── docker-publish.yml          # Build + push image sur GHCR
+│   └── docker-publish.yml          # pytest puis build + push image sur GHCR
 ├── cache/                          # Cache auto-généré (volume Docker)
 ├── Dockerfile
 └── docker-compose.yml
