@@ -107,6 +107,14 @@
   .source-card.active  { border-left: 3px solid var(--green); }
   .source-card.blocked { border-left: 3px solid var(--red); opacity: 0.7; }
   .source-card.rejected { border-left: 3px solid var(--orange); opacity: 0.6; }
+  .source-card.has-warning { border-left: 3px solid var(--red); background: rgba(255,82,82,0.06); }
+
+  .source-warning {
+    font-size: 0.78rem;
+    color: var(--red);
+    margin-top: 0.5rem;
+    font-weight: 600;
+  }
 
   .source-info { flex: 1; min-width: 0; }
 
@@ -236,14 +244,18 @@ function renderCard(s) {
   const sideHtml = s.status === 'active'
     ? `<div class="source-events"><div class="events-count">${s.events}</div><div class="events-label">events</div></div>`
     : `<a class="btn-visit" href="${s.url}" target="_blank" rel="noopener">Visiter →</a>`;
+  const warningHtml = s.warning
+    ? `<div class="source-warning">⚠️ 0 événement récupéré — le site a probablement changé de structure, le scraper doit être corrigé.</div>`
+    : '';
   return `
-  <div class="source-card ${s.status}">
+  <div class="source-card ${s.status}${s.warning ? ' has-warning' : ''}">
     <div class="source-info">
       <div class="source-name">
         <a href="${s.url}" target="_blank" rel="noopener">${s.name}</a>
         <span class="badge-status badge-${s.status}">${label}</span>
       </div>
       <div class="source-desc">${s.description}</div>
+      ${warningHtml}
     </div>
     ${sideHtml}
   </div>`;

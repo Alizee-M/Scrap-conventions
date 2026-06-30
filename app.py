@@ -68,7 +68,7 @@ def sources_page():
 @app.route("/api/sources")
 def api_sources():
     import os, time as _time
-    from scraper import CACHE_FILE
+    from scraper import CACHE_FILE, load_source_health
 
     with _refresh_lock:
         convs = get_conventions()
@@ -77,6 +77,19 @@ def api_sources():
     for c in convs:
         src = c.get("source", "inconnu")
         counts[src] = counts.get(src, 0) + 1
+
+    # Raw per-source scrape counts (pre-dedup) — a source returning 0 events
+    # is a sign it silently broke, even if the dedup-based count above isn't 0.
+    health = load_source_health()
+
+    def _active_source(key: str) -> dict:
+        h = health.get(key)
+        events = h["count"] if h else counts.get(key, 0)
+        return {
+            "events": events,
+            "warning": h is not None and (h["count"] == 0 or h["error"] is not None),
+            "last_scraped_at": h["scraped_at"] if h else None,
+        }
 
     cache_age = None
     if os.path.exists(CACHE_FILE):
@@ -89,7 +102,7 @@ def api_sources():
             "url": "https://lagendageek.com/liste-des-evenements/",
             "description": "Agenda geek France + Belgique + Suisse",
             "status": "active",
-            "events": counts.get("lagendageek", 0),
+            **_active_source("lagendageek"),
         },
         {
             "name": "Rom-Game",
@@ -97,7 +110,7 @@ def api_sources():
             "url": "https://www.rom-game.fr/agenda/",
             "description": "Conventions jeux, manga, culture pop (200+ events)",
             "status": "active",
-            "events": counts.get("romgame", 0),
+            **_active_source("romgame"),
         },
         {
             "name": "Bédé.fr",
@@ -105,7 +118,7 @@ def api_sources():
             "url": "https://www.bede.fr/festivals-manga",
             "description": "Festivals manga spécialisés",
             "status": "active",
-            "events": counts.get("bede", 0),
+            **_active_source("bede"),
         },
         {
             "name": "Nautiljon",
