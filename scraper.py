@@ -3,6 +3,7 @@ import os
 import re
 import time
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
 import requests
@@ -334,22 +335,30 @@ def scrape_all() -> list[dict]:
     all_events: list[dict] = []
     health = {}
 
-    for scraper, label in [
+    sources = [
         (scrape_lagendageek, "lagendageek"),
         (scrape_romgame, "romgame"),
         (scrape_bede, "bede"),
-    ]:
-        scraped_at = datetime.now().isoformat(timespec="seconds")
-        try:
-            events = scraper()
-            all_events.extend(events)
-            logger.info(f"{label}: {len(events)} events scraped")
-            health[label] = {"count": len(events), "scraped_at": scraped_at, "error": None}
-            if len(events) == 0:
-                logger.error(f"{label}: scraper returned 0 events — the site likely changed structure")
-        except Exception as e:
-            logger.error(f"{label} scraper failed: {e}")
-            health[label] = {"count": 0, "scraped_at": scraped_at, "error": str(e)}
+    ]
+    scraped_at = datetime.now().isoformat(timespec="seconds")
+
+    # Each source is an independent, polite (self-throttled) HTTP scrape — run
+    # them concurrently instead of waiting on one before starting the next.
+    # Results are still merged in the fixed source order above so dedup
+    # priority (first-seen wins) doesn't depend on which finishes first.
+    with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        futures = {label: executor.submit(scraper) for scraper, label in sources}
+        for _, label in sources:
+            try:
+                events = futures[label].result()
+                all_events.extend(events)
+                logger.info(f"{label}: {len(events)} events scraped")
+                health[label] = {"count": len(events), "scraped_at": scraped_at, "error": None}
+                if len(events) == 0:
+                    logger.error(f"{label}: scraper returned 0 events — the site likely changed structure")
+            except Exception as e:
+                logger.error(f"{label} scraper failed: {e}")
+                health[label] = {"count": 0, "scraped_at": scraped_at, "error": str(e)}
 
     save_source_health(health)
 
