@@ -139,6 +139,85 @@
     flex-shrink: 0;
   }
 
+  /* ── Filters ── */
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1;
+    min-width: 160px;
+  }
+
+  .filter-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
+
+  .filter-label span { color: var(--orange); font-weight: 600; }
+
+  input[type="range"] {
+    width: 100%;
+    height: 32px;
+    background: transparent;
+    -webkit-appearance: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #fff;
+    margin-top: -8px;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #fff;
+    cursor: pointer;
+  }
+
+  .date-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+  }
+
+  input[type="date"] {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.8rem;
+    outline: none;
+    min-height: 38px;
+    -webkit-appearance: none;
+    color-scheme: dark;
+  }
+
+  input[type="date"]:focus { border-color: var(--accent); }
+
   /* ── Stats ── */
   .stats {
     padding: 0.4rem 0.75rem;
@@ -295,6 +374,7 @@
 
     .controls {
       flex-direction: row;
+      flex-wrap: wrap;
       padding: 0.75rem 1.5rem;
       align-items: center;
     }
@@ -304,6 +384,8 @@
 
     .btn-group { flex: none; }
     .btn-group button { flex: none; padding: 0 0.85rem; }
+
+    .filter-group { flex: none; min-width: 220px; }
 
     .stats { padding: 0.5rem 1.5rem; font-size: 0.8rem; }
 
@@ -350,7 +432,7 @@
 <div class="controls">
   <!-- Row 1 : search -->
   <div class="controls-row" style="flex:1; width:100%;">
-    <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" />
+    <input type="text" id="location" placeholder="Ta ville (ex: Saint-Estève...)" autocomplete="off" value="Saint-Estève" />
     <button id="btn-search">Chercher</button>
   </div>
   <!-- Row 2 : sort + view + refresh -->
@@ -364,6 +446,30 @@
       <button id="btn-view-map" onclick="setView('map')">Carte</button>
     </div>
     <button class="btn-refresh" id="btn-refresh" onclick="refresh()" style="margin-left:0.5rem;">↺</button>
+  </div>
+  <!-- Row 3 : filters -->
+  <div class="controls-row" style="width:100%; flex-wrap:wrap; gap:0.7rem;">
+    <div class="filter-group">
+      <label class="filter-label">Distance max : <span id="dist-value">Toutes distances</span></label>
+      <input type="range" id="distance-slider" min="0" max="600" step="20" value="600">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Période</label>
+      <div class="btn-group" id="date-presets">
+        <button class="active" onclick="setDatePreset('all', this)">Tout</button>
+        <button onclick="setDatePreset('month', this)">Ce mois</button>
+        <button onclick="setDatePreset('3months', this)">3 mois</button>
+        <button onclick="setDatePreset('year', this)">Cette année</button>
+      </div>
+    </div>
+    <div class="filter-group date-range">
+      <label class="filter-label">Du / au</label>
+      <div class="date-range-inputs">
+        <input type="date" id="date-from">
+        <span>→</span>
+        <input type="date" id="date-to">
+      </div>
+    </div>
   </div>
 </div>
 
@@ -390,6 +496,10 @@ let currentView = 'list';
 let userLat = null;
 let userLon = null;
 let conventions = [];
+let distanceMax = null;
+let dateFrom = null;
+let dateTo = null;
+const DIST_SLIDER_MAX = 600;
 
 // ── Leaflet ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true }).setView([46.6, 2.3], 6);
@@ -480,6 +590,44 @@ function sortedData(data) {
   return copy;
 }
 
+function filterData(data) {
+  return data.filter(c => {
+    if (distanceMax !== null) {
+      if (c.distance_km === null || c.distance_km === undefined || c.distance_km > distanceMax) return false;
+    }
+    if (dateFrom && (!c.date || c.date < dateFrom)) return false;
+    if (dateTo && (!c.date || c.date > dateTo)) return false;
+    return true;
+  });
+}
+
+function setDatePreset(preset, btn) {
+  document.querySelectorAll('#date-presets button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const pad = n => String(n).padStart(2, '0');
+  const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = new Date();
+  let from = null, to = null;
+
+  if (preset === 'month') {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+    to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  } else if (preset === '3months') {
+    from = today;
+    to = new Date(today.getFullYear(), today.getMonth() + 3, today.getDate());
+  } else if (preset === 'year') {
+    from = today;
+    to = new Date(today.getFullYear(), 11, 31);
+  }
+
+  dateFrom = from ? toISO(from) : null;
+  dateTo = to ? toISO(to) : null;
+  document.getElementById('date-from').value = dateFrom || '';
+  document.getElementById('date-to').value = dateTo || '';
+  renderAll(conventions);
+}
+
 function renderList(data) {
   const grid = document.getElementById('grid');
   if (!data.length) { grid.innerHTML = '<div class="empty">Aucune convention trouvée.</div>'; return; }
@@ -504,9 +652,11 @@ function renderList(data) {
 }
 
 function renderAll(data) {
-  const s = sortedData(data);
+  const filtered = filterData(data);
+  const s = sortedData(filtered);
+  const filterNote = filtered.length !== data.length ? ` (sur ${data.length})` : '';
   document.getElementById('stats').textContent =
-    `${s.length} convention${s.length > 1 ? 's' : ''} à venir` +
+    `${s.length} convention${s.length > 1 ? 's' : ''}${filterNote} à venir` +
     (userLat !== null ? ` · ${currentSort === 'distance' ? 'par distance' : 'par date'}` : '');
   renderList(s);
   if (currentView === 'map') renderMap(s);
@@ -544,6 +694,31 @@ async function refresh() {
 
 document.getElementById('btn-search').addEventListener('click', load);
 document.getElementById('location').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+
+const distSlider = document.getElementById('distance-slider');
+const distValueEl = document.getElementById('dist-value');
+distSlider.addEventListener('input', () => {
+  const v = parseInt(distSlider.value, 10);
+  distanceMax = v >= DIST_SLIDER_MAX ? null : v;
+  distValueEl.textContent = distanceMax === null ? 'Toutes distances' : `≤ ${distanceMax} km`;
+  renderAll(conventions);
+});
+
+function clearDatePresetActive() {
+  document.querySelectorAll('#date-presets button').forEach(b => b.classList.remove('active'));
+}
+
+document.getElementById('date-from').addEventListener('change', e => {
+  dateFrom = e.target.value || null;
+  clearDatePresetActive();
+  renderAll(conventions);
+});
+
+document.getElementById('date-to').addEventListener('change', e => {
+  dateTo = e.target.value || null;
+  clearDatePresetActive();
+  renderAll(conventions);
+});
 
 load();
 </script>
