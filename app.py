@@ -124,6 +124,14 @@ def api_sources():
             "events": 0,
         },
         {
+            "name": "eVous",
+            "key": "evous",
+            "url": "https://www.evous.fr/agenda-france/calendrier-salons-sci-fi-manga-fantasy-geek.html",
+            "description": "Calendrier salons geek/otaku/manga France — bloqué (403)",
+            "status": "blocked",
+            "events": 0,
+        },
+        {
             "name": "Rostercon",
             "key": "rostercon",
             "url": "https://www.rostercon.com/en/location/france-en",

@@ -84,6 +84,13 @@
     padding-left: 0.25rem;
   }
 
+  .section-intro {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: -0.5rem 0 0.75rem;
+    padding-left: 0.25rem;
+  }
+
   .source-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 2rem; }
 
   .source-card {
@@ -140,6 +147,24 @@
   .events-count { font-size: 1.3rem; font-weight: 700; color: var(--accent2); }
   .events-label { font-size: 0.7rem; color: var(--muted); }
 
+  .btn-visit {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid rgba(224,64,251,0.35);
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+
+  .btn-visit:hover { background: rgba(224,64,251,0.12); }
+
   .cache-info {
     font-size: 0.75rem;
     color: var(--muted);
@@ -180,10 +205,11 @@
   <h2>Sources actives</h2>
   <div class="source-list" id="list-active"></div>
 
-  <h2>Sources bloquées (anti-scraping)</h2>
+  <h2>🔒 Bibliothèque — sites bloqués, à consulter manuellement</h2>
+  <p class="section-intro">Ces sites ont une politique anti-scraping (403) mais restent pertinents pour trouver des conventions — vas-y directement.</p>
   <div class="source-list" id="list-blocked"></div>
 
-  <h2>Sources investiguées — non retenues</h2>
+  <h2>📌 Autres sites repérés — non intégrés</h2>
   <div class="source-list" id="list-rejected"></div>
 
   <div class="cache-info" id="cache-info"></div>
@@ -207,9 +233,9 @@ function statusLabel(status) {
 
 function renderCard(s) {
   const [label, cls] = statusLabel(s.status);
-  const eventsHtml = s.status === 'active'
+  const sideHtml = s.status === 'active'
     ? `<div class="source-events"><div class="events-count">${s.events}</div><div class="events-label">events</div></div>`
-    : '';
+    : `<a class="btn-visit" href="${s.url}" target="_blank" rel="noopener">Visiter →</a>`;
   return `
   <div class="source-card ${s.status}">
     <div class="source-info">
@@ -219,7 +245,7 @@ function renderCard(s) {
       </div>
       <div class="source-desc">${s.description}</div>
     </div>
-    ${eventsHtml}
+    ${sideHtml}
   </div>`;
 }
 
