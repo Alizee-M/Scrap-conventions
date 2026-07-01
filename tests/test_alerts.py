@@ -11,14 +11,18 @@ def _event(name="Japan Tours Festival", event_date="2026-09-01", lat=None, lon=N
     }
 
 
+def _config(webhook="", city="", radius=50):
+    return {"discord_webhook_url": webhook, "alert_city": city, "alert_radius_km": radius}
+
+
 def test_send_test_notification_without_webhook_returns_false(monkeypatch):
-    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(alerts, "load_config", lambda: _config())
 
     assert alerts.send_test_notification() is False
 
 
 def test_send_test_notification_posts_to_webhook(monkeypatch):
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook"))
 
     posted = []
 
@@ -40,7 +44,7 @@ def test_send_test_notification_posts_to_webhook(monkeypatch):
 def test_no_webhook_configured_does_nothing(tmp_path, monkeypatch):
     seen_file = tmp_path / "alerted.json"
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(alerts, "load_config", lambda: _config())
 
     calls = []
     monkeypatch.setattr(alerts.requests, "post", lambda *a, **k: calls.append(a))
@@ -56,8 +60,7 @@ def test_first_run_bootstraps_without_alerting(tmp_path, monkeypatch):
     conventions must not blast a notification for every existing event."""
     seen_file = tmp_path / "alerted.json"
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
-    monkeypatch.delenv("ALERT_CITY", raising=False)
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook"))
 
     calls = []
     monkeypatch.setattr(alerts.requests, "post", lambda *a, **k: calls.append(a))
@@ -74,9 +77,7 @@ def test_new_event_within_radius_triggers_discord_post(tmp_path, monkeypatch):
     seen_file = tmp_path / "alerted.json"
     seen_file.write_text(json.dumps(["existing con|2026-01-01"]))
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
-    monkeypatch.setenv("ALERT_CITY", "Tours")
-    monkeypatch.setenv("ALERT_RADIUS_KM", "50")
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook", city="Tours", radius=50))
 
     monkeypatch.setattr(alerts, "geocode", lambda city: (47.39, 0.68))
     monkeypatch.setattr(alerts, "haversine", lambda *a: 10.0)
@@ -105,9 +106,7 @@ def test_new_event_outside_radius_is_not_alerted_but_marked_seen(tmp_path, monke
     seen_file = tmp_path / "alerted.json"
     seen_file.write_text(json.dumps([]))
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
-    monkeypatch.setenv("ALERT_CITY", "Tours")
-    monkeypatch.setenv("ALERT_RADIUS_KM", "50")
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook", city="Tours", radius=50))
 
     monkeypatch.setattr(alerts, "geocode", lambda city: (47.39, 0.68))
     monkeypatch.setattr(alerts, "haversine", lambda *a: 500.0)
@@ -126,8 +125,7 @@ def test_already_seen_event_is_not_alerted_again(tmp_path, monkeypatch):
     seen_file = tmp_path / "alerted.json"
     seen_file.write_text(json.dumps(["new con nearby|2026-09-01"]))
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
-    monkeypatch.delenv("ALERT_CITY", raising=False)
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook"))
 
     posted = []
     monkeypatch.setattr(alerts.requests, "post", lambda *a, **k: posted.append(a))
@@ -141,8 +139,7 @@ def test_event_missing_coordinates_is_skipped_when_center_configured(tmp_path, m
     seen_file = tmp_path / "alerted.json"
     seen_file.write_text(json.dumps([]))
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
-    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
-    monkeypatch.setenv("ALERT_CITY", "Tours")
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook", city="Tours"))
 
     monkeypatch.setattr(alerts, "geocode", lambda city: (47.39, 0.68))
 

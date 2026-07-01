@@ -5,6 +5,7 @@ import os
 import requests
 
 from geocoder import geocode, haversine
+from settings_store import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,8 @@ def _send_discord(webhook_url: str, event: dict):
 def send_test_notification() -> bool:
     """Sends a fixed test message straight to the webhook, bypassing the
     new-event/seen-file logic — used by the hidden /api/test-alert route to
-    verify DISCORD_WEBHOOK_URL is valid without waiting for a real scrape."""
-    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    verify the configured webhook is valid without waiting for a real scrape."""
+    webhook_url = load_config()["discord_webhook_url"]
     if not webhook_url:
         return False
     return _post_discord_message(webhook_url, "🔔 Test Scrap-Conventions : le webhook Discord fonctionne !")
@@ -61,20 +62,21 @@ def send_test_notification() -> bool:
 
 def check_and_notify(events: list[dict]) -> None:
     """Alert (via Discord webhook) on newly-scraped conventions within
-    ALERT_RADIUS_KM of ALERT_CITY. Reads config from env vars at call time
-    (not import time) so tests/monkeypatch of os.environ are honored, and so
-    Portainer env changes take effect on the next scrape without a rebuild.
+    alert_radius_km of alert_city, as configured on /settings. Reads config
+    from disk at call time so a config change via the settings page takes
+    effect on the very next scrape without a restart.
 
     First call ever (no SEEN_FILE yet) bootstraps the seen-set without
     alerting — otherwise enabling this on an app that already has a full
     cache would blast a notification for every existing upcoming event.
     """
-    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    config = load_config()
+    webhook_url = config["discord_webhook_url"]
     if not webhook_url:
         return
 
-    alert_city = os.environ.get("ALERT_CITY", "")
-    radius_km = float(os.environ.get("ALERT_RADIUS_KM", "50"))
+    alert_city = config["alert_city"]
+    radius_km = float(config["alert_radius_km"] or 50)
 
     first_run = not os.path.exists(SEEN_FILE)
     seen = _load_seen()

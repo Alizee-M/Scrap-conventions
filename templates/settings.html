@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Réglages — Scrap-Conventions</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#1a0a2e">
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --border: #2a2a3a;
+    --accent: #e040fb;
+    --accent2: #7c4dff;
+    --text: #e8e8f0;
+    --muted: #888899;
+    --green: #00e676;
+    --red: #ff5252;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  header {
+    background: linear-gradient(135deg, #1a0a2e, #0d0d1a);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  header h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .back {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-left: auto;
+  }
+
+  .back:hover { color: var(--text); border-color: var(--accent2); }
+
+  main { padding: 1.5rem; max-width: 480px; margin: 0 auto; }
+
+  @media (min-width: 600px) {
+    main { padding: 2rem; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .card p.intro {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.3rem;
+    display: block;
+  }
+
+  input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+
+  input:focus { outline: none; border-color: var(--accent2); }
+
+  button {
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .result {
+    font-size: 0.8rem;
+    min-height: 1.1em;
+  }
+
+  .field { display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Réglages</h1>
+  <a href="/" class="back">← Retour</a>
+</header>
+
+<main>
+  <div class="card" id="card">Chargement...</div>
+</main>
+
+<script>
+const card = document.getElementById('card');
+let unlockedPassword = null; // kept in memory only, never persisted client-side
+
+function fieldHtml(id, label, type, value = '', placeholder = '') {
+  return `
+  <div class="field">
+    <label for="${id}">${label}</label>
+    <input id="${id}" type="${type}" value="${value}" placeholder="${placeholder}" autocomplete="off">
+  </div>`;
+}
+
+function renderSetupForm() {
+  card.innerHTML = `
+    <p class="intro">Première configuration : renseigne ton webhook Discord et choisis un mot de passe pour pouvoir revenir modifier ces réglages plus tard.</p>
+    ${fieldHtml('setup-webhook', 'URL du webhook Discord', 'text')}
+    ${fieldHtml('setup-city', 'Ville de référence (optionnel)', 'text')}
+    ${fieldHtml('setup-radius', 'Rayon en km (défaut 50)', 'number', '50')}
+    ${fieldHtml('setup-password', 'Mot de passe', 'password')}
+    <button id="setup-btn">Enregistrer</button>
+    <div class="result" id="setup-result"></div>
+  `;
+  document.getElementById('setup-btn').addEventListener('click', async () => {
+    const password = document.getElementById('setup-password').value;
+    const resultEl = document.getElementById('setup-result');
+    if (!password) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = 'Le mot de passe est obligatoire.';
+      return;
+    }
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Enregistrement...';
+    try {
+      const resp = await fetch('/api/settings/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discord_webhook_url: document.getElementById('setup-webhook').value,
+          alert_city: document.getElementById('setup-city').value,
+          alert_radius_km: document.getElementById('setup-radius').value,
+          password,
+        }),
+      });
+      if (resp.ok) {
+        unlockedPassword = password;
+        await renderEditForm();
+      } else {
+        const data = await resp.json();
+        resultEl.style.color = 'var(--red)';
+        resultEl.textContent = `❌ ${data.error || 'Erreur inconnue'}`;
+      }
+    } catch (err) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `Erreur réseau (${err.message || err})`;
+    }
+  });
+}
+
+function renderUnlockForm() {
+  card.innerHTML = `
+    <p class="intro">Entre le mot de passe pour modifier les réglages d'alerte.</p>
+    ${fieldHtml('unlock-password', 'Mot de passe', 'password')}
+    <button id="unlock-btn">Déverrouiller</button>
+    <div class="result" id="unlock-result"></div>
+  `;
+  const submit = async () => {
+    const password = document.getElementById('unlock-password').value;
+    const resultEl = document.getElementById('unlock-result');
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Vérification...';
+    const resp = await fetch('/api/settings', { headers: { 'X-Settings-Password': password } });
+    if (resp.status === 404) {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = 'Mot de passe incorrect.';
+      return;
+    }
+    const data = await resp.json();
+    unlockedPassword = password;
+    renderEditForm(data);
+  };
+  document.getElementById('unlock-btn').addEventListener('click', submit);
+  document.getElementById('unlock-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+  });
+}
+
+async function renderEditForm(current) {
+  if (!current) {
+    const resp = await fetch('/api/settings', { headers: { 'X-Settings-Password': unlockedPassword } });
+    current = await resp.json();
+  }
+  card.innerHTML = `
+    ${fieldHtml('edit-webhook', 'URL du webhook Discord', 'text', current.discord_webhook_url)}
+    ${fieldHtml('edit-city', 'Ville de référence', 'text', current.alert_city)}
+    ${fieldHtml('edit-radius', 'Rayon en km', 'number', current.alert_radius_km)}
+    ${fieldHtml('edit-new-password', 'Nouveau mot de passe (laisser vide pour ne pas changer)', 'password')}
+    <button id="save-btn">Enregistrer</button>
+    <button class="secondary" id="test-btn" type="button">Envoyer un test Discord</button>
+    <div class="result" id="edit-result"></div>
+  `;
+
+  document.getElementById('save-btn').addEventListener('click', async () => {
+    const resultEl = document.getElementById('edit-result');
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Enregistrement...';
+    const newPassword = document.getElementById('edit-new-password').value;
+    const resp = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Settings-Password': unlockedPassword },
+      body: JSON.stringify({
+        discord_webhook_url: document.getElementById('edit-webhook').value,
+        alert_city: document.getElementById('edit-city').value,
+        alert_radius_km: document.getElementById('edit-radius').value,
+        new_password: newPassword || null,
+      }),
+    });
+    if (resp.ok) {
+      if (newPassword) unlockedPassword = newPassword;
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = '✅ Enregistré.';
+    } else {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = 'Session expirée, recharge la page.';
+    }
+  });
+
+  document.getElementById('test-btn').addEventListener('click', async () => {
+    const resultEl = document.getElementById('edit-result');
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Envoi en cours...';
+    const resp = await fetch('/api/test-alert', {
+      method: 'POST',
+      headers: { 'X-Settings-Password': unlockedPassword },
+    });
+    if (resp.ok) {
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = '✅ Message envoyé — vérifie ton salon Discord.';
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = `❌ ${data.error || 'Erreur inconnue'}`;
+    }
+  });
+}
+
+async function init() {
+  const resp = await fetch('/api/settings/status');
+  const data = await resp.json();
+  if (data.configured) {
+    renderUnlockForm();
+  } else {
+    renderSetupForm();
+  }
+}
+
+init();
+</script>
+</body>
+</html>

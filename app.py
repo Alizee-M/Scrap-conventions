@@ -1,11 +1,10 @@
-import hmac
 import logging
-import os
 import threading
 import time
 from flask import Flask, jsonify, render_template, request
 from geocoder import geocode, haversine
 from scraper import get_conventions
+import settings_store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -181,15 +180,69 @@ def api_geocode():
 def api_test_alert():
     # Hidden on purpose: unset or wrong password both return 404, so the
     # route doesn't reveal its own existence to anyone poking around.
-    expected = os.environ.get("ALERT_TEST_PASSWORD", "")
-    provided = request.headers.get("X-Test-Password", "")
-    if not expected or not hmac.compare_digest(provided, expected):
+    provided = request.headers.get("X-Settings-Password", "")
+    if not settings_store.verify_password(provided):
         return jsonify({"error": "not found"}), 404
 
     from alerts import send_test_notification
     if send_test_notification():
         return jsonify({"ok": True})
-    return jsonify({"error": "DISCORD_WEBHOOK_URL absent ou envoi échoué"}), 500
+    return jsonify({"error": "Webhook Discord absent ou envoi échoué"}), 500
+
+
+@app.route("/settings")
+def settings_page():
+    return render_template("settings.html")
+
+
+@app.route("/api/settings/status")
+def api_settings_status():
+    return jsonify({"configured": settings_store.is_configured()})
+
+
+@app.route("/api/settings/setup", methods=["POST"])
+def api_settings_setup():
+    # First-time only: refuses once a password already exists, so a later
+    # visitor can't silently take over an already-configured instance.
+    if settings_store.is_configured():
+        return jsonify({"error": "already configured"}), 409
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    if not password:
+        return jsonify({"error": "password required"}), 400
+
+    settings_store.set_up(
+        discord_webhook_url=data.get("discord_webhook_url", ""),
+        alert_city=data.get("alert_city", ""),
+        alert_radius_km=float(data.get("alert_radius_km") or 50),
+        password=password,
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    provided = request.headers.get("X-Settings-Password", "")
+    if not settings_store.verify_password(provided):
+        return jsonify({"error": "not found"}), 404
+
+    if request.method == "GET":
+        config = settings_store.load_config()
+        return jsonify({
+            "discord_webhook_url": config["discord_webhook_url"],
+            "alert_city": config["alert_city"],
+            "alert_radius_km": config["alert_radius_km"],
+        })
+
+    data = request.get_json(silent=True) or {}
+    settings_store.update(
+        discord_webhook_url=data.get("discord_webhook_url", ""),
+        alert_city=data.get("alert_city", ""),
+        alert_radius_km=float(data.get("alert_radius_km") or 50),
+        new_password=data.get("new_password") or None,
+    )
+    return jsonify({"ok": True})
 
 
 @app.route("/api/refresh", methods=["POST"])
