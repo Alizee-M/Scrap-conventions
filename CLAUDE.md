@@ -23,3 +23,6 @@ pour quoi que ce soit qui doit tenir dans la durée.
 - Déploiement : Portainer sur HAOS, port `5050` (voir README pour les étapes).
 - Tests : `pytest` (voir `requirements-dev.txt`), CI bloque le build/push GHCR si les tests échouent.
 - Mot de passe de `/settings` : haché via `werkzeug.security`, jamais stocké en clair.
+- `alerts.py` gère deux types d'alerte Discord distincts, chacun avec son propre fichier d'état dans `cache/` pour éviter le spam à chaque scrape :
+  - `check_and_notify` (conventions proches) → `cache/alerted_events.json`
+  - `check_source_health` (source cassée/rétablie) → `cache/source_alert_state.json`
