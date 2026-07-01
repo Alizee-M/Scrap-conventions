@@ -43,3 +43,42 @@ def test_refresh_allowed_again_after_cooldown_elapses(client, monkeypatch):
 
     second = client.post("/api/refresh")
     assert second.status_code == 200
+
+
+def test_test_alert_route_404s_without_password_configured(client, monkeypatch):
+    monkeypatch.delenv("ALERT_TEST_PASSWORD", raising=False)
+
+    resp = client.post("/api/test-alert", headers={"X-Test-Password": "anything"})
+
+    assert resp.status_code == 404
+
+
+def test_test_alert_route_404s_with_wrong_password(client, monkeypatch):
+    monkeypatch.setenv("ALERT_TEST_PASSWORD", "correct-horse")
+
+    resp = client.post("/api/test-alert", headers={"X-Test-Password": "wrong"})
+
+    assert resp.status_code == 404
+
+
+def test_test_alert_route_sends_notification_with_correct_password(client, monkeypatch):
+    monkeypatch.setenv("ALERT_TEST_PASSWORD", "correct-horse")
+
+    import alerts
+    monkeypatch.setattr(alerts, "send_test_notification", lambda: True)
+
+    resp = client.post("/api/test-alert", headers={"X-Test-Password": "correct-horse"})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_test_alert_route_reports_failure_when_webhook_not_configured(client, monkeypatch):
+    monkeypatch.setenv("ALERT_TEST_PASSWORD", "correct-horse")
+
+    import alerts
+    monkeypatch.setattr(alerts, "send_test_notification", lambda: False)
+
+    resp = client.post("/api/test-alert", headers={"X-Test-Password": "correct-horse"})
+
+    assert resp.status_code == 500

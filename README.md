@@ -34,8 +34,19 @@ Les alertes Discord sont **optionnelles** — sans `DISCORD_WEBHOOK_URL`, la fon
 | `DISCORD_WEBHOOK_URL` | non | URL du webhook Discord. Si absente, aucune alerte n'est envoyée. |
 | `ALERT_CITY` | non | Ville de référence pour le filtre de distance (ex. `Tours`). Sans elle, toute nouvelle convention alerte. |
 | `ALERT_RADIUS_KM` | non | Rayon en km autour de `ALERT_CITY` (défaut : `50`). |
+| `ALERT_TEST_PASSWORD` | non | Mot de passe pour tester l'envoi Discord sans attendre un scrape (voir ci-dessous). Sans elle, la route de test est indisponible. |
 
 Le premier scrape après activation de `DISCORD_WEBHOOK_URL` ne déclenche **aucune** alerte (bootstrap silencieux) : seules les conventions apparues *après* cette première exécution sont notifiées, pour ne pas spammer avec tout le cache existant.
+
+### Tester le webhook Discord sans attendre un scrape
+
+Une fois `DISCORD_WEBHOOK_URL` et `ALERT_TEST_PASSWORD` configurés (et le stack redéployé), envoie un message de test :
+
+```bash
+curl -X POST -H "X-Test-Password: <ton mot de passe>" http://<IP-de-ton-HAOS>:5050/api/test-alert
+```
+
+Réponse `{"ok": true}` + message reçu sur Discord → le webhook fonctionne. Sans `ALERT_TEST_PASSWORD` configuré, ou avec un mauvais mot de passe, la route répond 404 (elle ne révèle pas son existence).
 
 > Si tu ajoutes une intégration future nécessitant une clé, ne jamais la mettre dans le code :  
 > configure-la comme variable d'environnement dans Portainer (voir section déploiement).

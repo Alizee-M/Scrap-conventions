@@ -1,4 +1,6 @@
+import hmac
 import logging
+import os
 import threading
 import time
 from flask import Flask, jsonify, render_template, request
@@ -173,6 +175,21 @@ def api_geocode():
     if coords:
         return jsonify({"lat": coords[0], "lon": coords[1]})
     return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/test-alert", methods=["POST"])
+def api_test_alert():
+    # Hidden on purpose: unset or wrong password both return 404, so the
+    # route doesn't reveal its own existence to anyone poking around.
+    expected = os.environ.get("ALERT_TEST_PASSWORD", "")
+    provided = request.headers.get("X-Test-Password", "")
+    if not expected or not hmac.compare_digest(provided, expected):
+        return jsonify({"error": "not found"}), 404
+
+    from alerts import send_test_notification
+    if send_test_notification():
+        return jsonify({"ok": True})
+    return jsonify({"error": "DISCORD_WEBHOOK_URL absent ou envoi échoué"}), 500
 
 
 @app.route("/api/refresh", methods=["POST"])

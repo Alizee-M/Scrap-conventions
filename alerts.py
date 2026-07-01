@@ -28,6 +28,16 @@ def _save_seen(keys: set[str]):
         json.dump(sorted(keys), f, ensure_ascii=False, indent=2)
 
 
+def _post_discord_message(webhook_url: str, content: str) -> bool:
+    try:
+        resp = requests.post(webhook_url, json={"content": content}, timeout=10)
+        resp.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        logger.error(f"Discord webhook failed: {e}")
+        return False
+
+
 def _send_discord(webhook_url: str, event: dict):
     lines = [f"**Nouvelle convention : {event['name']}**"]
     if event.get("date"):
@@ -36,11 +46,17 @@ def _send_discord(webhook_url: str, event: dict):
         lines.append(f"Lieu : {event['location']}")
     if event.get("url"):
         lines.append(event["url"])
-    try:
-        resp = requests.post(webhook_url, json={"content": "\n".join(lines)}, timeout=10)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Discord webhook failed: {e}")
+    _post_discord_message(webhook_url, "\n".join(lines))
+
+
+def send_test_notification() -> bool:
+    """Sends a fixed test message straight to the webhook, bypassing the
+    new-event/seen-file logic — used by the hidden /api/test-alert route to
+    verify DISCORD_WEBHOOK_URL is valid without waiting for a real scrape."""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    if not webhook_url:
+        return False
+    return _post_discord_message(webhook_url, "🔔 Test Scrap-Conventions : le webhook Discord fonctionne !")
 
 
 def check_and_notify(events: list[dict]) -> None:

@@ -9,6 +9,7 @@ services:
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
       - ALERT_CITY=${ALERT_CITY:-}
       - ALERT_RADIUS_KM=${ALERT_RADIUS_KM:-50}
+      - ALERT_TEST_PASSWORD=${ALERT_TEST_PASSWORD:-}
     volumes:
       - scrap-conventions-cache:/app/cache
 

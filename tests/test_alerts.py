@@ -11,6 +11,32 @@ def _event(name="Japan Tours Festival", event_date="2026-09-01", lat=None, lon=N
     }
 
 
+def test_send_test_notification_without_webhook_returns_false(monkeypatch):
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+
+    assert alerts.send_test_notification() is False
+
+
+def test_send_test_notification_posts_to_webhook(monkeypatch):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.example/webhook")
+
+    posted = []
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, json=None, timeout=None):
+        posted.append((url, json))
+        return FakeResp()
+
+    monkeypatch.setattr(alerts.requests, "post", fake_post)
+
+    assert alerts.send_test_notification() is True
+    assert posted[0][0] == "https://discord.example/webhook"
+    assert "Test" in posted[0][1]["content"]
+
+
 def test_no_webhook_configured_does_nothing(tmp_path, monkeypatch):
     seen_file = tmp_path / "alerted.json"
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))
