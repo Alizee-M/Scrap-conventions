@@ -45,4 +45,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/alizee-m/scrap-conventions:latest
+          tags: |
+            ghcr.io/alizee-m/scrap-conventions:latest
+            ghcr.io/alizee-m/scrap-conventions:sha-${{ github.sha }}

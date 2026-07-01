@@ -26,3 +26,4 @@ pour quoi que ce soit qui doit tenir dans la durée.
 - `alerts.py` gère deux types d'alerte Discord distincts, chacun avec son propre fichier d'état dans `cache/` pour éviter le spam à chaque scrape :
   - `check_and_notify` (conventions proches) → `cache/alerted_events.json`
   - `check_source_health` (source cassée/rétablie) → `cache/source_alert_state.json`
+- La CI publie chaque image sous deux tags : `latest` et `sha-<commit complet>`. Le second permet un rollback (voir README) sans dépendre de l'historique GHCR de `latest` qui s'écrase à chaque push. Ne pas retirer ce second tag sans proposer une autre méthode de rollback à la place.

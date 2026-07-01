@@ -515,6 +515,7 @@
       <div id="location-suggestions" class="suggestions"></div>
     </div>
     <button id="btn-search">Chercher</button>
+    <button id="btn-geoloc" class="btn-refresh" title="Utiliser ma position actuelle">📍 Près de moi</button>
   </div>
 </div>
 
@@ -830,6 +831,35 @@ document.addEventListener('click', e => {
 });
 
 document.getElementById('btn-search').addEventListener('click', () => { closeSuggestions(); load(); });
+
+document.getElementById('btn-geoloc').addEventListener('click', () => {
+  const btn = document.getElementById('btn-geoloc');
+  if (!navigator.geolocation) {
+    document.getElementById('stats').textContent = 'Géolocalisation non disponible sur ce navigateur.';
+    return;
+  }
+
+  closeSuggestions();
+  btn.disabled = true;
+  btn.textContent = '📍 Localisation...';
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Près de moi';
+      locationInput.value = 'Ma position';
+      setSort('distance');
+      load({ lat: position.coords.latitude, lon: position.coords.longitude });
+    },
+    () => {
+      btn.disabled = false;
+      btn.textContent = '📍 Près de moi';
+      document.getElementById('stats').textContent =
+        'Position refusée ou indisponible — autorise la géolocalisation dans ton navigateur, ou cherche par ville.';
+    },
+    { timeout: 10000 }
+  );
+});
 
 const distSlider = document.getElementById('distance-slider');
 const distValueEl = document.getElementById('dist-value');

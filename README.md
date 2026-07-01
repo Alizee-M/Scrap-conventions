@@ -14,7 +14,7 @@ Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 ## Fonctionnalités
 
 - Scraping automatique des conventions à venir (les 3 sources sont scrapées en parallèle)
-- Recherche par ville avec autocomplétion (géocodage via l'API Adresse data.gouv.fr, repli sur Nominatim/OpenStreetMap pour l'étranger)
+- Recherche par ville avec autocomplétion (géocodage via l'API Adresse data.gouv.fr, repli sur Nominatim/OpenStreetMap pour l'étranger), ou géolocalisation directe via le bouton **"📍 Près de moi"**
 - Filtres par distance (slider) et par date (presets + plage), tri par **date** ou par **distance**
 - Rafraîchissement manuel (limité à 1 tous les 10 min, protège les 3 sources scrapées) ou automatique toutes les 24h, sans jamais bloquer une requête
 - Page `/sources` avec health-check visible par source
@@ -68,6 +68,16 @@ Le premier scrape après avoir renseigné un webhook ne déclenche **aucune** al
 ```
 http://<IP-de-ton-HAOS>:5050
 ```
+
+### Revenir à une version précédente (rollback)
+
+Chaque build CI publie l'image sous deux tags : `latest` (toujours la dernière version) et `sha-<commit complet>` (une version figée par commit, conservée sur GHCR). Si un déploiement casse quelque chose :
+
+1. Trouve le commit à restaurer (`git log` sur le repo, ou l'historique des runs dans l'onglet **Actions** sur GitHub)
+2. Portainer → stack `scrap-conventions` → **Editor**
+3. Remplace temporairement `image: ghcr.io/alizee-m/scrap-conventions:latest` par `image: ghcr.io/alizee-m/scrap-conventions:sha-<le SHA complet>`
+4. **Update the stack** (coche "Re-pull image")
+5. Une fois le correctif poussé sur `main` et vérifié, repasse l'image sur `:latest` pour reprendre les mises à jour automatiques
 
 ---
 
