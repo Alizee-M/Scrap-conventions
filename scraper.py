@@ -362,6 +362,9 @@ def scrape_all() -> list[dict]:
 
     save_source_health(health)
 
+    from alerts import check_source_health
+    check_source_health(health)
+
     unique = _deduplicate(all_events)
     return sorted(unique, key=lambda x: x["date"] or "9999")
 

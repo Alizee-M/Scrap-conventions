@@ -17,8 +17,8 @@ Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 - Recherche par ville avec autocomplétion (géocodage via l'API Adresse data.gouv.fr, repli sur Nominatim/OpenStreetMap pour l'étranger)
 - Filtres par distance (slider) et par date (presets + plage), tri par **date** ou par **distance**
 - Rafraîchissement manuel (limité à 1 tous les 10 min, protège les 3 sources scrapées) ou automatique toutes les 24h, sans jamais bloquer une requête
-- Page `/sources` avec health-check visible par source (alerte si une source casse)
-- Alerte Discord optionnelle quand une nouvelle convention correspond à ta ville/rayon, configurable depuis la page `/settings` (voir ci-dessous)
+- Page `/sources` avec health-check visible par source
+- Alertes Discord optionnelles (configurables depuis `/settings`) : nouvelle convention correspondant à ta ville/rayon, et source qui casse ou se rétablit
 - UI dark mode, responsive, installable comme PWA sur mobile (icône d'accueil)
 
 ---
@@ -32,6 +32,10 @@ Cette app ne nécessite **aucune variable d'environnement**. Les alertes Discord
 3. **Enregistrer**
 
 Pour modifier les réglages ensuite : reviens sur `/settings`, entre ton mot de passe pour déverrouiller le formulaire. Un bouton **"Envoyer un test Discord"** est disponible une fois déverrouillé, pour vérifier que le webhook fonctionne sans attendre un scrape.
+
+### Alerte quand une source casse
+
+Dès qu'un webhook Discord est configuré, une alerte est aussi envoyée quand une des 3 sources scrapées (lagendageek, rom-game, bede) tombe à 0 événement ou renvoie une erreur — plus besoin d'aller vérifier `/sources` toi-même. Un seul message est envoyé au moment où la source casse (pas un par jour tant qu'elle reste cassée), et un message "rétablie" est envoyé quand elle refonctionne.
 
 Le premier scrape après avoir renseigné un webhook ne déclenche **aucune** alerte (bootstrap silencieux) : seules les conventions apparues *après* cette première exécution sont notifiées, pour ne pas spammer avec tout le cache existant.
 

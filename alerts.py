@@ -10,6 +10,13 @@ from settings_store import load_config
 logger = logging.getLogger(__name__)
 
 SEEN_FILE = "cache/alerted_events.json"
+SOURCE_STATE_FILE = "cache/source_alert_state.json"
+
+SOURCE_NAMES = {
+    "lagendageek": "L'Agenda Geek",
+    "romgame": "Rom-Game",
+    "bede": "Bédé.fr",
+}
 
 
 def _event_key(event: dict) -> str:
@@ -101,3 +108,46 @@ def check_and_notify(events: list[dict]) -> None:
         _send_discord(webhook_url, event)
 
     _save_seen(seen | new_keys)
+
+
+def _load_source_state() -> dict:
+    if not os.path.exists(SOURCE_STATE_FILE):
+        return {}
+    with open(SOURCE_STATE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_source_state(state: dict) -> None:
+    os.makedirs("cache", exist_ok=True)
+    with open(SOURCE_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
+def check_source_health(health: dict) -> None:
+    """Alerts (via Discord) when a source flips from OK to broken (0 events
+    or a scrape error) or back to OK — only on the flip, not on every scrape
+    while it stays in the same state, so an already-known-broken source
+    doesn't spam a message once a day."""
+    webhook_url = load_config()["discord_webhook_url"]
+    if not webhook_url:
+        return
+
+    previous_state = _load_source_state()
+    new_state = {}
+
+    for key, h in health.items():
+        is_broken = h["count"] == 0 or h["error"] is not None
+        new_state[key] = is_broken
+        was_broken = previous_state.get(key, False)
+        name = SOURCE_NAMES.get(key, key)
+
+        if is_broken and not was_broken:
+            reason = h["error"] or "0 événement récupéré"
+            _post_discord_message(
+                webhook_url,
+                f"⚠️ Source cassée : **{name}** ({reason}) — le scraper doit probablement être corrigé.",
+            )
+        elif was_broken and not is_broken:
+            _post_discord_message(webhook_url, f"✅ Source rétablie : **{name}** ({h['count']} événements).")
+
+    _save_source_state(new_state)
