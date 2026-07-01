@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 _refresh_lock = threading.Lock()
 
+REFRESH_COOLDOWN_SECONDS = 600  # protects the 3 scraped sources from being hammered
+_last_manual_refresh = 0.0
+
 
 def _background_refresh():
     while True:
@@ -174,7 +177,20 @@ def api_geocode():
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
+    global _last_manual_refresh
+
+    # Global cooldown, not per-IP: the resource being protected (the 3rd-party
+    # sites we scrape) is shared across all callers, so a single caller
+    # hammering this route is just as damaging as many different ones. The
+    # check-and-set happens under the same lock so two concurrent requests
+    # can't both slip past the check before the timestamp is updated.
     with _refresh_lock:
+        elapsed = time.time() - _last_manual_refresh
+        if elapsed < REFRESH_COOLDOWN_SECONDS:
+            retry_after = int(REFRESH_COOLDOWN_SECONDS - elapsed)
+            return jsonify({"error": "Trop de rafraîchissements, réessaie plus tard", "retry_after": retry_after}), 429, {"Retry-After": str(retry_after)}
+
+        _last_manual_refresh = time.time()
         try:
             convs = get_conventions(force_refresh=True)
             return jsonify({"count": len(convs)})

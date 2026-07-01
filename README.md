@@ -16,16 +16,26 @@ Les résultats des 3 sources sont fusionnés et dédoublonnés automatiquement.
 - Scraping automatique des conventions à venir (les 3 sources sont scrapées en parallèle)
 - Recherche par ville avec autocomplétion (géocodage via l'API Adresse data.gouv.fr, repli sur Nominatim/OpenStreetMap pour l'étranger)
 - Filtres par distance (slider) et par date (presets + plage), tri par **date** ou par **distance**
-- Rafraîchissement manuel ou automatique toutes les 24h, sans jamais bloquer une requête
+- Rafraîchissement manuel (limité à 1 tous les 10 min, protège les 3 sources scrapées) ou automatique toutes les 24h, sans jamais bloquer une requête
 - Page `/sources` avec health-check visible par source (alerte si une source casse)
+- Alerte Discord optionnelle quand une nouvelle convention correspond à ta ville/rayon (voir variables d'environnement ci-dessous)
 - UI dark mode, responsive, installable comme PWA sur mobile (icône d'accueil)
 
 ---
 
 ## Variables d'environnement
 
-Cette app ne nécessite **aucune variable d'environnement** — pas d'API key, pas de token.  
-Elle utilise l'API Adresse (data.gouv.fr) et Nominatim (OpenStreetMap), gratuits et sans clé, pour le géocodage.
+Le géocodage (API Adresse data.gouv.fr + Nominatim) ne nécessite aucune clé.
+
+Les alertes Discord sont **optionnelles** — sans `DISCORD_WEBHOOK_URL`, la fonctionnalité est simplement désactivée :
+
+| Variable | Requis | Description |
+|---|---|---|
+| `DISCORD_WEBHOOK_URL` | non | URL du webhook Discord. Si absente, aucune alerte n'est envoyée. |
+| `ALERT_CITY` | non | Ville de référence pour le filtre de distance (ex. `Tours`). Sans elle, toute nouvelle convention alerte. |
+| `ALERT_RADIUS_KM` | non | Rayon en km autour de `ALERT_CITY` (défaut : `50`). |
+
+Le premier scrape après activation de `DISCORD_WEBHOOK_URL` ne déclenche **aucune** alerte (bootstrap silencieux) : seules les conventions apparues *après* cette première exécution sont notifiées, pour ne pas spammer avec tout le cache existant.
 
 > Si tu ajoutes une intégration future nécessitant une clé, ne jamais la mettre dans le code :  
 > configure-la comme variable d'environnement dans Portainer (voir section déploiement).
@@ -77,6 +87,7 @@ L'app tourne sur `http://localhost:5000`.
 ├── app.py                          # Flask + API REST
 ├── scraper.py                      # Scraping 3 sources (en parallèle)
 ├── geocoder.py                     # Géocodage BAN + repli Nominatim, haversine
+├── alerts.py                       # Alerte Discord sur nouvelle convention (ville/rayon)
 ├── templates/
 │   ├── index.html                  # Interface dark mode
 │   └── sources.html                # Health-check des sources

@@ -421,4 +421,8 @@ def get_conventions(force_refresh: bool = False) -> list[dict]:
 
     save_cache(data)
     logger.info(f"Total: {len(data)} events cached with coordinates")
+
+    from alerts import check_and_notify
+    check_and_notify(data)
+
     return data
