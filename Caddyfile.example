@@ -1,0 +1,22 @@
+# Ce fichier N'EST PAS utilisé tel quel : il sert uniquement de modèle.
+#
+# Le vrai Caddyfile (avec ton token DuckDNS en clair dedans) ne doit JAMAIS
+# être commité dans ce repo ni passé en variable d'environnement Portainer
+# (voir CLAUDE.md — le webhook Discord suit la même règle). Il doit vivre
+# uniquement dans le volume Docker `scrap-conventions-caddy-config`, qui
+# survit aux redéploiements.
+#
+# Étapes (une seule fois) :
+#   1. Récupère ton token sur https://www.duckdns.org (visible sur ta page
+#      de compte, à côté de tes domaines).
+#   2. Dans Portainer → Volumes → scrap-conventions-caddy-config → Browse,
+#      crée un fichier nommé "Caddyfile" avec le contenu ci-dessous
+#      (remplace <TON_TOKEN_DUCKDNS>).
+#   3. Redémarre le conteneur scrap-conventions-caddy.
+
+maisonlilinono.duckdns.org:8443 {
+	tls {
+		dns duckdns <TON_TOKEN_DUCKDNS>
+	}
+	reverse_proxy scrap-conventions:5000
+}

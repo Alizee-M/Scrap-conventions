@@ -8,5 +8,26 @@ services:
     volumes:
       - scrap-conventions-cache:/app/cache
 
+  # Reverse proxy HTTPS. Certificat Let's Encrypt obtenu via un challenge DNS
+  # (module DuckDNS) : aucun port 80/443 requis pour la validation, seulement
+  # le port 8443 (à forwarder toi-même sur ta box) pour servir le trafic.
+  # Le Caddyfile réel (avec ton token DuckDNS) vit uniquement dans le volume
+  # scrap-conventions-caddy-config — voir Caddyfile.example et le README.
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: scrap-conventions-caddy
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - scrap-conventions-caddy-config:/etc/caddy
+      - scrap-conventions-caddy-data:/data
+    depends_on:
+      - scrap-conventions
+
 volumes:
   scrap-conventions-cache:
+  scrap-conventions-caddy-config:
+  scrap-conventions-caddy-data:

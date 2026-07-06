@@ -69,6 +69,59 @@ Le premier scrape après avoir renseigné un webhook ne déclenche **aucune** al
 http://<IP-de-ton-HAOS>:5050
 ```
 
+En HTTPS, une fois Caddy configuré (voir section suivante) :
+
+```
+https://<ton-nom>.duckdns.org:8443
+```
+
+---
+
+## Activer le HTTPS (Caddy + DuckDNS)
+
+Le stack inclut un service `caddy` qui obtient et renouvelle automatiquement
+un certificat Let's Encrypt via un **challenge DNS** (module `caddy-dns/duckdns`),
+donc sans avoir besoin des ports 80/443 (souvent déjà pris par autre chose sur
+un HAOS). Seul le port `8443` doit être accessible pour servir le trafic HTTPS.
+
+### Prérequis
+
+- Un nom DuckDNS existant (ex: `maisonlilinono.duckdns.org`), déjà maintenu à
+  jour vers l'IP publique de la maison (souvent déjà géré par un add-on HAOS
+  pour Home Assistant — vérifie que ce nom pointe bien vers chez toi).
+- Le port `8443` forwardé sur ta box vers l'IP locale du HAOS.
+
+### Configuration (une seule fois)
+
+Le vrai `Caddyfile` (avec ton token DuckDNS en clair) **ne doit jamais** être
+commité dans ce repo ni passé en variable d'environnement Portainer — même
+règle que pour le webhook Discord (voir plus haut et `CLAUDE.md`). Il vit
+uniquement dans le volume Docker `scrap-conventions-caddy-config`, qui
+survit aux redéploiements.
+
+1. Récupère ton token sur [duckdns.org](https://www.duckdns.org) (visible sur
+   ta page de compte, à côté de tes domaines)
+2. Portainer → **Volumes** → `scrap-conventions-caddy-config` → **Browse** →
+   crée un fichier nommé `Caddyfile` avec ce contenu (adapte le domaine et le
+   token) — voir aussi `Caddyfile.example` dans ce repo :
+
+   ```
+   maisonlilinono.duckdns.org:8443 {
+       tls {
+           dns duckdns <TON_TOKEN_DUCKDNS>
+       }
+       reverse_proxy scrap-conventions:5000
+   }
+   ```
+
+3. Redémarre le conteneur `scrap-conventions-caddy` (Portainer → Containers →
+   Restart)
+4. Accède à `https://maisonlilinono.duckdns.org:8443` — le premier chargement
+   peut prendre quelques secondes le temps que Caddy obtienne le certificat
+
+Si tu changes de nom DuckDNS ou de token plus tard : édite ce même fichier
+puis redémarre le conteneur `scrap-conventions-caddy`.
+
 ### Revenir à une version précédente (rollback)
 
 Chaque build CI publie l'image sous deux tags : `latest` (toujours la dernière version) et `sha-<commit complet>` (une version figée par commit, conservée sur GHCR). Si un déploiement casse quelque chose :
