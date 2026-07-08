@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -62,16 +63,30 @@ def _parse_date(text: str) -> date | None:
         return None
 
 
+FETCH_RETRIES = 3
+FETCH_RETRY_BACKOFF_SECONDS = 2  # 2s, 4s between attempts
+
+
 def _fetch(url: str) -> BeautifulSoup | None:
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        return BeautifulSoup(resp.text, "lxml")
-    except requests.RequestException as e:
-        logger.error(f"Fetch error {url}: {e}")
-        return None
+    """A transient network hiccup (timeout, connection reset...) shouldn't be
+    indistinguishable from the site actually breaking — the latter triggers a
+    Discord alert (see check_source_health), so retry a couple of times
+    before giving up. A 404 is not transient and is never retried."""
+    last_error = None
+    for attempt in range(1, FETCH_RETRIES + 1):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return BeautifulSoup(resp.text, "lxml")
+        except requests.RequestException as e:
+            last_error = e
+            if attempt < FETCH_RETRIES:
+                time.sleep(FETCH_RETRY_BACKOFF_SECONDS * attempt)
+
+    logger.error(f"Fetch error {url} after {FETCH_RETRIES} attempts: {last_error}")
+    return None
 
 
 # ─── Source 1 : lagendageek.com ───────────────────────────────────────────────
@@ -374,12 +389,20 @@ def scrape_all() -> list[dict]:
 HEALTH_FILE = "cache/source_health.json"
 
 
+def _atomic_write_json(path: str, data) -> None:
+    """Write via a temp file + os.replace so a concurrent read (no lock held
+    on the read path) never sees a partially-written file."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
+
 def save_source_health(health: dict):
     """Raw per-source scrape counts (pre-dedup), so a source silently breaking
     isn't masked by another source happening to cover the same events."""
-    os.makedirs("cache", exist_ok=True)
-    with open(HEALTH_FILE, "w", encoding="utf-8") as f:
-        json.dump(health, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(HEALTH_FILE, health)
 
 
 def load_source_health() -> dict:
@@ -400,9 +423,13 @@ def load_cache() -> list[dict] | None:
 
 
 def save_cache(data: list[dict]):
-    os.makedirs("cache", exist_ok=True)
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(CACHE_FILE, data)
+
+
+# Guards the scrape itself (network calls + cache write), not cache reads —
+# reads never block on this, so a slow daily refresh doesn't stall every
+# incoming request for however long the scrape takes.
+_scrape_lock = threading.Lock()
 
 
 def get_conventions(force_refresh: bool = False) -> list[dict]:
@@ -411,21 +438,29 @@ def get_conventions(force_refresh: bool = False) -> list[dict]:
         if cached is not None:
             return cached
 
-    logger.info("Scraping all sources...")
-    data = scrape_all()
+    with _scrape_lock:
+        # Re-check: another thread may have just finished scraping while we
+        # were waiting for the lock (e.g. two cold-start requests racing).
+        if not force_refresh:
+            cached = load_cache()
+            if cached is not None:
+                return cached
 
-    # Geocode at scrape time so coords are in cache — never at request time
-    from geocoder import geocode
-    logger.info(f"Geocoding {len(data)} events (this may take a while)...")
-    for conv in data:
-        if conv.get("location") and "lat" not in conv:
-            coords = geocode(conv["location"])
-            conv["lat"], conv["lon"] = (coords[0], coords[1]) if coords else (None, None)
+        logger.info("Scraping all sources...")
+        data = scrape_all()
 
-    save_cache(data)
-    logger.info(f"Total: {len(data)} events cached with coordinates")
+        # Geocode at scrape time so coords are in cache — never at request time
+        from geocoder import geocode
+        logger.info(f"Geocoding {len(data)} events (this may take a while)...")
+        for conv in data:
+            if conv.get("location") and "lat" not in conv:
+                coords = geocode(conv["location"])
+                conv["lat"], conv["lon"] = (coords[0], coords[1]) if coords else (None, None)
 
-    from alerts import check_and_notify
-    check_and_notify(data)
+        save_cache(data)
+        logger.info(f"Total: {len(data)} events cached with coordinates")
 
-    return data
+        from alerts import check_and_notify
+        check_and_notify(data)
+
+        return data

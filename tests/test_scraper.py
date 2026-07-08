@@ -12,7 +12,66 @@ then re-check the assertions below still describe events actually on the page.
 """
 import time
 
+import requests as requests_module
 import scraper
+
+
+# ─── _fetch retry ───────────────────────────────────────────────────────────
+
+def test_fetch_retries_transient_error_then_succeeds(monkeypatch):
+    """A connection error on the first attempt shouldn't be fatal — it's
+    what used to make a single dropped packet look identical to a source
+    being genuinely broken (see check_source_health)."""
+    monkeypatch.setattr(scraper.time, "sleep", lambda *_: None)
+    calls = {"n": 0}
+
+    class FakeResponse:
+        status_code = 200
+        text = "<html></html>"
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise requests_module.exceptions.ConnectionError("boom")
+        return FakeResponse()
+
+    monkeypatch.setattr(scraper.requests, "get", fake_get)
+
+    assert scraper._fetch("https://example.com") is not None
+    assert calls["n"] == 2
+
+
+def test_fetch_gives_up_after_max_retries(monkeypatch):
+    monkeypatch.setattr(scraper.time, "sleep", lambda *_: None)
+    calls = {"n": 0}
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["n"] += 1
+        raise requests_module.exceptions.Timeout("timeout")
+
+    monkeypatch.setattr(scraper.requests, "get", fake_get)
+
+    assert scraper._fetch("https://example.com") is None
+    assert calls["n"] == scraper.FETCH_RETRIES
+
+
+def test_fetch_does_not_retry_on_404(monkeypatch):
+    calls = {"n": 0}
+
+    class FakeResponse:
+        status_code = 404
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["n"] += 1
+        return FakeResponse()
+
+    monkeypatch.setattr(scraper.requests, "get", fake_get)
+
+    assert scraper._fetch("https://example.com") is None
+    assert calls["n"] == 1
 
 
 # ─── scrape_all ─────────────────────────────────────────────────────────────
