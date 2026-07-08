@@ -54,6 +54,48 @@ def test_ban_query_used_for_french_city(monkeypatch):
     assert any("api-adresse.data.gouv.fr" in c for c in calls)
 
 
+def test_ban_query_rejects_name_lookalike(monkeypatch):
+    """Regression: querying "La Louvière" (a real Belgian city, scraped with no country
+    marker) used to match BAN's "La Louvière-Lauragais" — an 80-person French hamlet with
+    a similar name — because its score (0.83) cleared BAN_MIN_SCORE despite being the
+    wrong place entirely. BAN must reject non-exact name matches so this falls through to
+    Nominatim, which finds the actual (foreign) city instead."""
+    calls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        calls.append(url)
+        if "api-adresse" in url:
+            class BanResp:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"features": [{
+                        "properties": {"score": 0.83, "city": "La Louvière-Lauragais"},
+                        "geometry": {"coordinates": [1.75, 43.27]},
+                    }]}
+            return BanResp()
+
+        class NomResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return [{"lat": "50.48", "lon": "4.19"}]
+        return NomResp()
+
+    monkeypatch.setattr(geocoder.requests, "get", fake_get)
+    monkeypatch.setattr(geocoder, "_load_cache", lambda: None)
+    monkeypatch.setattr(geocoder, "_save_cache", lambda: None)
+    monkeypatch.setattr(geocoder, "_cache", {})
+    monkeypatch.setattr(geocoder, "_last_request", 0.0)
+
+    result = geocoder.geocode("La Louvière")
+    assert result == (50.48, 4.19)
+    assert any("api-adresse" in c for c in calls)
+    assert any("nominatim" in c for c in calls)
+
+
 def test_geocode_skips_ban_for_non_french_city(monkeypatch):
     """BAN (api-adresse.data.gouv.fr) only covers France. geocode() must only
     try it when normalize_location() resolved the country to France — for a

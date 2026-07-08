@@ -2,6 +2,7 @@ import json
 import os
 import time
 import re
+import unicodedata
 import requests
 import logging
 
@@ -52,8 +53,20 @@ def _nominatim_query(q: str) -> tuple[float, float] | None:
     return None
 
 
+def _fold(s: str) -> str:
+    """Case/accent-insensitive form for comparing city names."""
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return s.strip().lower()
+
+
 def _ban_query(city: str) -> tuple[float, float] | None:
-    """French government address API (api-adresse.data.gouv.fr) — fast, no rate limit, France only."""
+    """French government address API (api-adresse.data.gouv.fr) — fast, no rate limit, France only.
+
+    Requires the result's city name to exactly match the query (accents/case aside). BAN's
+    fuzzy scoring alone isn't enough: e.g. querying "La Louvière" (a real Belgian city) scores
+    an obscure 80-person French hamlet called "La Louvière-Lauragais" at 0.83, well above
+    BAN_MIN_SCORE, even though it's the wrong place — a name lookalike, not a match.
+    """
     try:
         resp = requests.get(
             BAN_URL,
@@ -63,8 +76,10 @@ def _ban_query(city: str) -> tuple[float, float] | None:
         resp.raise_for_status()
         features = resp.json().get("features", [])
         if features and features[0]["properties"]["score"] >= BAN_MIN_SCORE:
-            lon, lat = features[0]["geometry"]["coordinates"]
-            return lat, lon
+            props = features[0]["properties"]
+            if _fold(props["city"]) == _fold(city):
+                lon, lat = features[0]["geometry"]["coordinates"]
+                return lat, lon
     except (requests.RequestException, KeyError, ValueError) as e:
         logger.warning(f"BAN error for '{city}': {e}")
     return None
@@ -127,10 +142,15 @@ def geocode(location: str) -> tuple[float, float] | None:
         return tuple(_cache[normalized]) if _cache[normalized] else None
 
     result = None
-    if normalized.endswith(", France"):
-        result = _ban_query(normalized[: -len(", France")])
+    bare_city = normalized[: -len(", France")] if normalized.endswith(", France") else None
+    if bare_city is not None:
+        result = _ban_query(bare_city)
     if not result:
-        result = _nominatim_query(normalized)
+        # If BAN found nothing (or rejected a lookalike), don't force the guessed
+        # ", France" onto the Nominatim query — normalize_location() only defaults
+        # to France when no country signal was in the text, so a failed BAN lookup
+        # more likely means that guess was wrong than that the place doesn't exist.
+        result = _nominatim_query(bare_city if bare_city is not None else normalized)
 
     _cache[normalized] = list(result) if result else None
     _save_cache()
