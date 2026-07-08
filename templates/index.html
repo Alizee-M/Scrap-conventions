@@ -307,6 +307,28 @@
   .card:active { border-color: var(--accent2); }
   a.card:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
 
+  /* Wraps .card so the Mappy button can sit outside its <a> — nesting an <a>
+     inside the card's own <a> (source URL) would break both links. */
+  .card-wrap { position: relative; }
+
+  .card-mappy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(13,13,26,0.75);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    font-size: 0.95rem;
+    backdrop-filter: blur(2px);
+  }
+  .card-mappy-btn:hover { border-color: var(--accent2); }
+
   .card-img {
     width: 90px;
     min-width: 90px;
@@ -410,6 +432,16 @@
   .popup-name a { color: var(--accent); text-decoration: none; }
   .popup-meta { font-size: 0.92rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.3rem; line-height: 1.4; }
   .popup-dist { color: var(--orange); font-weight: 600; margin-top: 0.3rem; }
+
+  .popup-mappy {
+    display: inline-block;
+    margin-top: 0.5rem;
+    color: var(--accent2);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .popup-mappy:hover { text-decoration: underline; }
 
   /* ── Desktop overrides ── */
   @media (min-width: 640px) {
@@ -593,13 +625,15 @@ function renderMap(data) {
     const dist = c.distance_km !== null ? `<div class="popup-dist">🗺️ ${Math.round(c.distance_km)} km</div>` : '';
     const url = safeUrl(c.url);
     const name = escapeHtml(c.name);
+    const mappy = mappyLink(c.location);
     const popup = `
       <div class="popup-name">${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${name}</a>` : name}</div>
       <div class="popup-meta">
         ${c.date ? `<span>📅 ${fmtDate(c.date)}</span>` : ''}
         ${c.location ? `<span>📍 ${escapeHtml(c.location)}</span>` : ''}
         ${dist}
-      </div>`;
+      </div>
+      ${mappy ? `<a class="popup-mappy" href="${escapeHtml(mappy)}" target="_blank" rel="noopener">🚗 Itinéraire Mappy</a>` : ''}`;
     markers.push(L.marker([c.lat, c.lon], { icon: convIcon }).addTo(map).bindPopup(popup, { maxWidth: 280, minWidth: 200 }));
   });
 }
@@ -625,6 +659,18 @@ function fmtDate(iso) {
 function fmtDist(km) {
   if (km === null || km === undefined) return null;
   return km < 1 ? '< 1 km' : `${Math.round(km)} km`;
+}
+
+// Deep link into Mappy's itinerary planner (km voiture réels, temps de trajet,
+// coût carburant/péages) — Mappy n'a pas d'API self-service gratuite, donc on
+// laisse Mappy calculer ça lui-même plutôt que de le refaire nous-mêmes.
+// Format documenté par le support Mappy : fr.mappy.com/itineraire#/recherche/DEPART/DESTINATION/
+function mappyLink(destination) {
+  if (!destination) return null;
+  const dest = encodeURIComponent(destination);
+  if (userLat === null) return `https://fr.mappy.com/itineraire#/vers/${dest}/`;
+  const origin = encodeURIComponent(`${userLat},${userLon}`);
+  return `https://fr.mappy.com/itineraire#/recherche/${origin}/${dest}/`;
 }
 
 function setSort(s) {
@@ -703,18 +749,22 @@ function renderList(data) {
       : `<div class="card-img-placeholder">🎌</div>`;
     const tag = url ? 'a' : 'div';
     const attrs = url ? ` href="${escapeHtml(url)}" target="_blank" rel="noopener"` : '';
+    const mappy = mappyLink(c.location);
     return `
-    <${tag} class="card"${attrs}>
-      ${imgHtml}
-      <div class="card-body">
-        <div class="card-name">${escapeHtml(c.name)}</div>
-        <div class="card-meta">
-          ${c.date ? `<span class="badge badge-date">📅 ${fmtDate(c.date)}</span>` : ''}
-          ${c.location ? `<span class="badge badge-loc">📍 ${escapeHtml(c.location)}</span>` : ''}
-          ${dist ? `<span class="badge badge-dist">🗺️ ${dist}</span>` : ''}
+    <div class="card-wrap">
+      <${tag} class="card"${attrs}>
+        ${imgHtml}
+        <div class="card-body">
+          <div class="card-name">${escapeHtml(c.name)}</div>
+          <div class="card-meta">
+            ${c.date ? `<span class="badge badge-date">📅 ${fmtDate(c.date)}</span>` : ''}
+            ${c.location ? `<span class="badge badge-loc">📍 ${escapeHtml(c.location)}</span>` : ''}
+            ${dist ? `<span class="badge badge-dist">🗺️ ${dist}</span>` : ''}
+          </div>
         </div>
-      </div>
-    </${tag}>`;
+      </${tag}>
+      ${mappy ? `<a class="card-mappy-btn" href="${escapeHtml(mappy)}" target="_blank" rel="noopener" title="Itinéraire, temps et coût sur Mappy" onclick="event.stopPropagation()">🚗</a>` : ''}
+    </div>`;
   }).join('');
 }
 
