@@ -69,7 +69,8 @@ def sources_page():
 
 @app.route("/api/sources")
 def api_sources():
-    import os, time as _time
+    import os
+    import time as _time
     from scraper import CACHE_FILE, load_source_health
 
     convs = get_conventions()

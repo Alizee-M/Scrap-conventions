@@ -236,6 +236,30 @@ def test_api_sources_flags_warning_when_source_health_reports_broken_scrape(clie
     assert by_key["bede"]["last_scraped_at"] == "2026-07-10T00:00:00"
 
 
+def test_api_sources_reports_cache_age_when_cache_file_exists(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(app_module, "get_conventions", lambda: [])
+    cache_file = tmp_path / "conventions.json"
+    cache_file.write_text("[]")
+    monkeypatch.setattr("scraper.CACHE_FILE", str(cache_file))
+
+    resp = client.get("/api/sources")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["cache_age_seconds"] >= 0
+
+
+def test_api_refresh_reports_error_when_get_conventions_raises(client, monkeypatch):
+    def fail(force_refresh=False):
+        raise RuntimeError("scrape boom")
+
+    monkeypatch.setattr(app_module, "get_conventions", fail)
+
+    resp = client.post("/api/refresh")
+
+    assert resp.status_code == 500
+    assert "scrape boom" in resp.get_json()["error"]
+
+
 def test_index_and_static_pages_render(client, monkeypatch):
     monkeypatch.setattr(app_module, "get_conventions", lambda: [])
 
@@ -265,3 +289,67 @@ def test_settings_post_updates_values_and_can_rotate_password(client):
     assert config["alert_radius_km"] == 20
     assert settings_store.verify_password("correct-horse") is False
     assert settings_store.verify_password("newpass") is True
+
+
+# ─── background thread targets ──────────────────────────────────────────────
+# _background_refresh() runs `while True: sleep(); scrape()`. To test it without
+# actually looping forever, time.sleep is faked to raise a sentinel exception
+# on its 2nd call, which lets one full iteration run before breaking out.
+
+class _StopLoop(Exception):
+    pass
+
+
+def test_background_refresh_scrapes_once_per_sleep_cycle(monkeypatch):
+    calls = []
+    monkeypatch.setattr(app_module, "get_conventions", lambda force_refresh=False: calls.append(force_refresh))
+
+    sleep_calls = []
+
+    def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 2:
+            raise _StopLoop()
+
+    monkeypatch.setattr(app_module.time, "sleep", fake_sleep)
+
+    with pytest.raises(_StopLoop):
+        app_module._background_refresh()
+
+    assert sleep_calls == [86400, 86400]
+    assert calls == [True]
+
+
+def test_background_refresh_survives_a_failed_scrape(monkeypatch):
+    def fail(force_refresh=False):
+        raise RuntimeError("scrape boom")
+
+    monkeypatch.setattr(app_module, "get_conventions", fail)
+
+    sleep_calls = []
+
+    def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 2:
+            raise _StopLoop()
+
+    monkeypatch.setattr(app_module.time, "sleep", fake_sleep)
+
+    with pytest.raises(_StopLoop):
+        app_module._background_refresh()
+
+    # the loop must reach its 2nd sleep instead of dying on the 1st scrape's exception
+    assert sleep_calls == [86400, 86400]
+
+
+def test_initial_load_runs_to_completion(monkeypatch):
+    monkeypatch.setattr(app_module, "get_conventions", lambda: [{"name": "A"}, {"name": "B"}])
+    app_module._initial_load()  # no exception = success
+
+
+def test_initial_load_swallows_scrape_failure(monkeypatch):
+    def fail():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_module, "get_conventions", fail)
+    app_module._initial_load()  # must not propagate
