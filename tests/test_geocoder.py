@@ -1,3 +1,7 @@
+import time
+
+import requests
+
 import geocoder
 
 
@@ -26,6 +30,13 @@ def test_normalize_location_country_name_in_text():
 
 def test_normalize_location_defaults_to_france():
     assert geocoder.normalize_location("Saint-Estève") == "Saint-Estève, France"
+
+
+def test_normalize_location_recognized_english_country_name_left_untouched():
+    """When the source text already names the country in English (no French/Dutch
+    match, no dept-number or ISO-code suffix), normalize_location() must not
+    tack on ', France' — the country signal is already there."""
+    assert geocoder.normalize_location("Ghent, Belgium") == "Ghent, Belgium"
 
 
 def test_ban_query_used_for_french_city(monkeypatch):
@@ -122,3 +133,92 @@ def test_geocode_skips_ban_for_non_french_city(monkeypatch):
     assert result == (50.85, 4.35)
     assert len(calls) == 1
     assert "nominatim" in calls[0]
+
+
+def test_geocode_returns_cached_result_without_any_network_call(monkeypatch):
+    monkeypatch.setattr(geocoder, "_load_cache", lambda: None)
+    monkeypatch.setattr(geocoder, "_cache", {"Tours, France": [47.39, 0.68]})
+
+    def fail_get(*a, **k):
+        raise AssertionError("a cache hit must not touch the network")
+
+    monkeypatch.setattr(geocoder.requests, "get", fail_get)
+
+    assert geocoder.geocode("Tours") == (47.39, 0.68)
+
+
+def test_geocode_returns_none_for_a_cached_previous_miss(monkeypatch):
+    """A location that failed to geocode last time is cached as None so it
+    isn't retried (and doesn't hammer Nominatim) on every subsequent scrape."""
+    monkeypatch.setattr(geocoder, "_load_cache", lambda: None)
+    monkeypatch.setattr(geocoder, "_cache", {"Nulle Part, France": None})
+
+    monkeypatch.setattr(geocoder.requests, "get", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("a cache hit must not touch the network")
+    ))
+
+    assert geocoder.geocode("Nulle Part") is None
+
+
+# ─── cache file I/O ─────────────────────────────────────────────────────────
+
+def test_load_and_save_cache_roundtrip(tmp_path, monkeypatch):
+    cache_file = tmp_path / "geocode_cache.json"
+    monkeypatch.setattr(geocoder, "CACHE_FILE", str(cache_file))
+    monkeypatch.setattr(geocoder, "_cache", {"Tours, France": [47.39, 0.68]})
+
+    geocoder._save_cache()
+    monkeypatch.setattr(geocoder, "_cache", {})
+    geocoder._load_cache()
+
+    assert geocoder._cache == {"Tours, France": [47.39, 0.68]}
+
+
+def test_load_cache_leaves_cache_empty_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(geocoder, "CACHE_FILE", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(geocoder, "_cache", {"stale": [1.0, 2.0]})
+
+    geocoder._load_cache()
+
+    assert geocoder._cache == {"stale": [1.0, 2.0]}  # untouched, not reset
+
+
+# ─── network error handling ─────────────────────────────────────────────────
+
+def test_nominatim_query_returns_none_on_request_exception(monkeypatch):
+    monkeypatch.setattr(geocoder, "_last_request", 0.0)
+    monkeypatch.setattr(geocoder.time, "sleep", lambda *_: None)
+
+    def fake_get(*a, **k):
+        raise requests.exceptions.Timeout("boom")
+
+    monkeypatch.setattr(geocoder.requests, "get", fake_get)
+
+    assert geocoder._nominatim_query("Nulle Part") is None
+
+
+def test_nominatim_query_throttles_consecutive_requests(monkeypatch):
+    """No more than ~1 request/second to Nominatim, per its usage policy."""
+    monkeypatch.setattr(geocoder, "_last_request", time.time())
+
+    slept = []
+    monkeypatch.setattr(geocoder.time, "sleep", lambda s: slept.append(s))
+
+    class Resp:
+        def json(self):
+            return []
+
+    monkeypatch.setattr(geocoder.requests, "get", lambda *a, **k: Resp())
+
+    geocoder._nominatim_query("Tours")
+
+    assert slept and slept[0] > 0
+
+
+def test_ban_query_returns_none_on_request_exception(monkeypatch):
+    def fake_get(*a, **k):
+        raise requests.exceptions.ConnectionError("boom")
+
+    monkeypatch.setattr(geocoder.requests, "get", fake_get)
+
+    assert geocoder._ban_query("Tours") is None

@@ -41,6 +41,21 @@ def test_send_test_notification_posts_to_webhook(monkeypatch):
     assert "Test" in posted[0][1]["content"]
 
 
+def test_send_test_notification_returns_false_when_webhook_post_fails(monkeypatch):
+    """A network-level failure (timeout, DNS, connection reset...) posting to
+    Discord must be swallowed and reported as a plain False, not raise."""
+    monkeypatch.setattr(alerts, "load_config", lambda: _config(webhook="https://discord.example/webhook"))
+
+    import requests
+
+    def fake_post(url, json=None, timeout=None):
+        raise requests.exceptions.ConnectionError("boom")
+
+    monkeypatch.setattr(alerts.requests, "post", fake_post)
+
+    assert alerts.send_test_notification() is False
+
+
 def test_no_webhook_configured_does_nothing(tmp_path, monkeypatch):
     seen_file = tmp_path / "alerted.json"
     monkeypatch.setattr(alerts, "SEEN_FILE", str(seen_file))

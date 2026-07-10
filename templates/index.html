@@ -571,6 +571,7 @@
   <div id="map"></div>
 </div>
 
+<script src="/static/helpers.js"></script>
 <script>
 let currentSort = 'date';
 let currentView = 'list';
@@ -639,39 +640,9 @@ function renderMap(data) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-// Event name/location/image/url all come from 3rd-party scraped sites, not
-// from this app — never trust them raw in innerHTML (stored XSS otherwise).
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
-}
-
-function safeUrl(u) {
-  return /^https?:\/\//i.test(u || '') ? u : '';
-}
-
-function fmtDate(iso) {
-  if (!iso) return '?';
-  return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function fmtDist(km) {
-  if (km === null || km === undefined) return null;
-  return km < 1 ? '< 1 km' : `${Math.round(km)} km`;
-}
-
-// Deep link into Mappy's itinerary planner (km voiture réels, temps de trajet,
-// coût carburant/péages) — Mappy n'a pas d'API self-service gratuite, donc on
-// laisse Mappy calculer ça lui-même plutôt que de le refaire nous-mêmes.
-// Format documenté par le support Mappy : fr.mappy.com/itineraire#/recherche/DEPART/DESTINATION/
-function mappyLink(destination) {
-  if (!destination) return null;
-  const dest = encodeURIComponent(destination);
-  if (userLat === null) return `https://fr.mappy.com/itineraire#/vers/${dest}/`;
-  const origin = encodeURIComponent(`${userLat},${userLon}`);
-  return `https://fr.mappy.com/itineraire#/recherche/${origin}/${dest}/`;
-}
+// escapeHtml, safeUrl, fmtDate, fmtDist, mappyLink, sortedData and filterData
+// now live in static/helpers.js (unit-tested via `node --test`), loaded above
+// as a plain <script> so they share this script's top-level scope.
 
 function setSort(s) {
   currentSort = s;
@@ -687,27 +658,6 @@ function setView(v) {
   document.getElementById('view-list').classList.toggle('active', v === 'list');
   document.getElementById('view-map').classList.toggle('active', v === 'map');
   if (v === 'map') { map.invalidateSize(); renderMap(sortedData(conventions)); }
-}
-
-function sortedData(data) {
-  const copy = [...data];
-  if (currentSort === 'distance' && userLat !== null) {
-    copy.sort((a, b) => (a.distance_km ?? 99999) - (b.distance_km ?? 99999));
-  } else {
-    copy.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
-  }
-  return copy;
-}
-
-function filterData(data) {
-  return data.filter(c => {
-    if (distanceMax !== null) {
-      if (c.distance_km === null || c.distance_km === undefined || c.distance_km > distanceMax) return false;
-    }
-    if (dateFrom && (!c.date || c.date < dateFrom)) return false;
-    if (dateTo && (!c.date || c.date > dateTo)) return false;
-    return true;
-  });
 }
 
 function setDatePreset(preset, btn) {

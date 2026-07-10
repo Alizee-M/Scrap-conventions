@@ -21,7 +21,9 @@ pour quoi que ce soit qui doit tenir dans la durée.
 ## Autres repères rapides
 
 - Déploiement : Portainer sur HAOS, port `5050` (voir README pour les étapes).
-- Tests : `pytest` (voir `requirements-dev.txt`), CI bloque le build/push GHCR si les tests échouent.
+- Tests Python : `pytest` (voir `requirements-dev.txt`), couverture ~99% sur `app.py`/`alerts.py`/`geocoder.py`/`scraper.py`. CI bloque le build/push GHCR si les tests ou le lint échouent.
+- Lint Python : `ruff check .` (config par défaut, pas de fichier `ruff.toml` — rien à contourner).
+- JS : les fonctions pures du front (`escapeHtml`, `safeUrl`, `fmtDate`, `fmtDist`, `mappyLink`, `sortedData`, `filterData`) vivent dans `static/helpers.js`, chargé par `templates/index.html` en `<script src>` classique (pas un module — `index.html` déclare encore `let currentSort`/`userLat`/etc., partagés via le scope top-level commun à tous les `<script>` classiques d'une page). Testées avec `node --test` (runner intégré à Node 18+, aucune dépendance npm). Si une évolution de `index.html` a besoin d'une nouvelle fonction pure, l'ajouter dans `helpers.js` plutôt que dans le `<script>` inline, pour qu'elle reste testable.
 - Mot de passe de `/settings` : haché via `werkzeug.security`, jamais stocké en clair.
 - `alerts.py` gère deux types d'alerte Discord distincts, chacun avec son propre fichier d'état dans `cache/` pour éviter le spam à chaque scrape :
   - `check_and_notify` (conventions proches) → `cache/alerted_events.json`
